@@ -19,6 +19,9 @@ I liked how versatile JavaScript is. Everything had methods and made life a lot 
 # How do I use this?
 Simple. Just copy the content of the RBXunderscore.lua file into a ModuleScript instance. Then, in the script you would like to use this with, put <b>_ = require(--location of script--)</b> at the top. So for example, if I put this ModuleScript (named RBXunderscore) in game.ServerScriptService, I would put <b>_ = require(game.ServerScriptService.RBXunderscore)</b> at the top of my script.
 
+# Important things to know
+* Make sure that when you use a throwaway variable, use something other than <b>_</b> (such as using _ in for loops).
+
 # Examples
 * Print every property of Workspace: <b>print(_(Workspace):GetAllMembers("Properties"))</b>
 * Print every class of Workspace.BasePlate: <b>print(_(Workspace.BasePlate):GetAllClasses())</b>
