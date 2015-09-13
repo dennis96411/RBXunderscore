@@ -7,7 +7,7 @@ Object wrapper and utility functions for ROBLOX Lua
 This is essentially an object wrapper that provides functions and methods for different objects.
 * Functionalities
   * Method/function chaining
-    * Input: _({1, 2, 3}):Reverse():Trim(2):Each(print)
+    * Input: _({1, 2, 3}):Reverse():Splice(2):Each(print)
     * Output: 2 1
   * Detailed tostring
     * Input: 
