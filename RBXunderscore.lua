@@ -100,7 +100,7 @@ local Storage, Capabilities = {
 			}
 		},
 		
-		--Empty non-mutative objects for accumulators
+		--Empty immutable objects for accumulators
 		EmptyAccumulativeObjects = {
 			string = "",
 			number = 0,
@@ -436,7 +436,7 @@ Functions = {
 				OnTimeout = Options.OnTimeout
 			}, {Time = {}}, {}
 			return InternalFunctions.NewProxy({
-				__index = setfenv({
+				__index = setmetatable({
 					Properties = Properties,
 					Events = Events
 				}, {
