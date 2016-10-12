@@ -52,7 +52,7 @@ for __, Instance in next, game:GetChildren() do --Cache services already under t
 end
 
 --Main entry point and tables of functions; declared for use later
-local _, Functions, InternalFunctions, Log, ProxyMethods
+local _, Functions, InternalFunctions, Assert, Log, ProxyMethods
 
 --Storage and environmental capabilities
 local Storage, Capabilities = {
@@ -172,7 +172,7 @@ local Storage, Capabilities = {
 				Vector3int16 = setfenv(function(Object) return Object + Dummy end, {Dummy = NewVector3int16()})
 			},
 			
-			Stringifiers = setmetatable({
+			Encoders = setmetatable({
 				ColorSequence = function(ColorSequence)
 					local String, StringSize, Keypoints = {}, 0, ColorSequence.Keypoints
 					for Index = 1, #Keypoints do
@@ -207,7 +207,7 @@ local Storage, Capabilities = {
 				Fallback = function(Userdata) local UserdataString = tostring(Userdata); return UserdataString:find("^%w+: %w+$") and "0x" .. UserdataString:sub(-8) or Userdata ~= Enum and UserdataString or "" end
 			}, {__index = function(Self) return Self.Fallback end}),
 			
-			Parsers = setmetatable({
+			Decoders = setmetatable({
 				Axes = function(String)
 					local Decoded = ProxyMethods.string.Split(String, ", ")
 					for Index = 1, #Decoded do Decoded[Index] = Enum.Axis[Decoded[Index]] end
@@ -281,7 +281,7 @@ local Storage, Capabilities = {
 Functions = {
 	Create = {
 		Instance = function(ClassName, Properties, Events)
-			if Configurations.AssertArgumentTypes then InternalFunctions.Assert.ExpectType("Functions.Create.Instance", ClassName, "string", Properties, "nil, table", Events, "nil, table") end
+			if Configurations.AssertArgumentTypes then Assert.ExpectArgumentType("Functions.Create.Instance", ClassName, "string", Properties, "nil, table", Events, "nil, table") end
 			local Instance, Parent = NewInstance(ClassName)
 			if Properties then
 				Parent = Properties.Parent; Properties.Parent = nil
@@ -299,7 +299,7 @@ Functions = {
 		end,
 		
 		Proxy = function(Metatable)
-			if Configurations.AssertArgumentTypes then InternalFunctions.Assert.ExpectType("Functions.Create.Proxy", Metatable, "table") end
+			if Configurations.AssertArgumentTypes then Assert.ExpectArgumentType("Functions.Create.Proxy", Metatable, "table") end
 			local Proxy = newproxy(true); local CurrentMetatable = getmetatable(Proxy)
 			for Name, Metamethod in next, Metatable do
 				CurrentMetatable[Name] = Metamethod
@@ -308,9 +308,9 @@ Functions = {
 		end
 	},
 	
-	Event = {
+	--[[Event = {
 		Create = function(Event, Handler)
-			InternalFunctions.Assert("Functions.Event.Create", not ProxyMethods.table.GetNest(Storage.Temporary.Events, Event), "The event \"" .. Event .. "\" already exists!")
+			Assert("Functions.Event.Create", not ProxyMethods.table.GetNest(Storage.Temporary.Events, Event), "The event \"" .. Event .. "\" already exists!")
 			if type(Handler) == "function" then
 				local Signal = Libraries.RbxUtility.CreateSignal()
 				ProxyMethods.table.CreateNest(Storage.Temporary.Events, Event, {Signal = Signal, Connections = {}})
@@ -324,7 +324,7 @@ Functions = {
 		Remove = function(Event) --Fix this; NestParentTable == nil
 			local EventNest = ProxyMethods.table.GetNest(Storage.Temporary.Events, Event); local NestParentTable = ProxyMethods.table.GetOriginChildTable(Storage.Temporary.Events, EventNest)
 			--print(_(Storage.Temporary.Events):GetOriginChildTable(EventNest))
-			InternalFunctions.Assert("Functions.Event.Remove", EventNest, "The event \"" .. Event .. "\" does not exist!")
+			Assert("Functions.Event.Remove", EventNest, "The event \"" .. Event .. "\" does not exist!")
 			for __, Connection in next, EventNest.Connections do
 				Connection:__disconnect()
 			end
@@ -334,7 +334,7 @@ Functions = {
 		
 		Attach = function(Event, Handler, Tag)
 			local EventNest = ProxyMethods.table.GetNest(Storage.Temporary.Events, Event)
-			InternalFunctions.Assert("Functions.Event.Attach", EventNest, "The event \"" .. Event .. "\" does not exist!", not Tag or not EventNest.Connections[Tag], "The event \"" .. Event .. "\" already has an attachment with the tag \"" .. tostring(Tag) .. "\"! Please detach it first.")
+			Assert("Functions.Event.Attach", EventNest, "The event \"" .. Event .. "\" does not exist!", not Tag or not EventNest.Connections[Tag], "The event \"" .. Event .. "\" already has an attachment with the tag \"" .. tostring(Tag) .. "\"! Please detach it first.")
 			local Connection = EventNest.Signal:connect(Handler)
 			local Proxy = Functions.Create.Proxy({
 				__index = function(Self, Key) return (Key == "disconnect" or Key == "Detach") and Functions.Event.Detach or Key == "__disconnect" and Connection.disconnect or nil end,
@@ -347,7 +347,7 @@ Functions = {
 		Detach = function(...)
 			local Arguments = {...}
 			local EventConnectionsNest = type(Arguments[1]) == "string" and ProxyMethods.table.GetNest(Storage.Temporary.Events, Arguments[1] .. ".Connections") or ProxyMethods.table.GetOriginChildTable(Storage.Temporary.Events, Arguments[1])
-			InternalFunctions.Assert("Functions.Event.Detach", EventConnectionsNest, "The event" .. (type(Arguments[1]) == "string" and " \"" .. Arguments[1] .. "\"" or "") .. " does not exist!")
+			Assert("Functions.Event.Detach", EventConnectionsNest, "The event" .. (type(Arguments[1]) == "string" and " \"" .. Arguments[1] .. "\"" or "") .. " does not exist!")
 			for Tag, Connection in next, EventConnectionsNest do
 				if Connection == Arguments[1] or Tag == Arguments[2] then
 					Connection:__disconnect()
@@ -359,19 +359,19 @@ Functions = {
 		end,
 		
 		GetConnections = function(Event)
-			InternalFunctions.Assert.Expect("Functions.Event.GetConnections", Event)
+			Assert.ExpectArgument("Functions.Event.GetConnections", Event)
 			local EventNest, Connections, ConnectionsSize = ProxyMethods.table.GetNest(Storage.Temporary.Events, Event), {}, 0
-			InternalFunctions.Assert("Functions.Event.GetConnections", EventNest, "The event \"" .. Event .. "\" does not exist!")
+			Assert("Functions.Event.GetConnections", EventNest, "The event \"" .. Event .. "\" does not exist!")
 			for __, Connection in next, EventNest.Connections do
 				ConnectionsSize = ConnectionsSize + 1; Connections[ConnectionsSize] = Connection
 			end
 			return Connections
 		end
-	},
+	},]]
 	
 	GUI = {
 		CreateMessageDialog = function(Parent, Title, Message, Style, Buttons) --Styles: Notify, Confirm, Error
-			if Configurations.AssertArgumentTypes then InternalFunctions.Assert.ExpectType("Functions.GUI.CreateMessageDialog", Parent, "nil, Instance", Title, "string", Message, "string", Style, "string", Buttons, "table") end
+			if Configurations.AssertArgumentTypes then Assert.ExpectArgumentType("Functions.GUI.CreateMessageDialog", Parent, "nil, Instance", Title, "string", Message, "string", Style, "string", Buttons, "table") end
 			local Parent, Dialog, FromOffset = Parent and (Parent:IsA("GuiBase") and Parent or Functions.Create.Instance("ScreenGui", {Name = "_MessageDialog", Parent = Parent})) or nil, Style and Libraries.RbxGui.CreateStyledMessageDialog(Title, Message, Style, Buttons) or Libraries.RbxGui.CreateMessageDialog(Title, Message, Buttons), 50
 			local DefaultPosition, DefaultSize = Dialog.Position, Dialog.Size
 			ProxyMethods.userdata.Instance.SetProperties(Dialog, {
@@ -399,7 +399,7 @@ Functions = {
 		end,
 		
 		ModifyZIndex = function(Parent, Level, HardSet)
-			if Configurations.AssertArgumentTypes then InternalFunctions.Assert.ExpectType("Functions.GUI.ModifyZIndex", Parent, "Instance", Level, "integer", HardSet, "nil, boolean") end
+			if Configurations.AssertArgumentTypes then Assert.ExpectArgumentType("Functions.GUI.ModifyZIndex", Parent, "instance", Level, "integer", HardSet, "nil, boolean") end
 			local Children, ZIndex = ProxyMethods.userdata.Instance.GetAllChildren(Parent), HardSet and Level or Parent.ZIndex + Level
 			pcall(function() Parent.ZIndex = ZIndex end)
 			for Index = 1, #Children do
@@ -417,7 +417,7 @@ Functions = {
 			--Properties: URL, RequestType, Data, DataType (POST), EncodeData (POST), CompressData (POST), Cache (GET), Response, Status, Timeout
 			--Events: OnSuccess, OnFailure, OnStatusChange, OnTimeOut
 			--Statuses: 
-			if Configurations.AssertArgumentTypes then InternalFunctions.Assert.ExpectType("HTTPRequest.New", URL, "string", Options, "nil, table") end
+			if Configurations.AssertArgumentTypes then Assert.ExpectArgumentType("HTTPRequest.New", URL, "string", Options, "nil, table") end
 			local Properties, Events, Statuses, Internal = {
 				URL = Services.HttpService:UrlEncode(URL),
 				RequestType = Options.RequestType and Options.RequestType:upper() or "GET",
@@ -505,7 +505,7 @@ Functions = {
 	
 	Utilities = {
 		NormalizeIndexRange = function(MaximumPosition, Begin, End)
-			if Configurations.AssertArgumentTypes then InternalFunctions.Assert.ExpectType("Functions.Utilities.NormalizeIndexRange", MaximumPosition, "integer", Begin, "nil, integer", End, "nil, integer") end
+			if Configurations.AssertArgumentTypes then Assert.ExpectArgumentType("Functions.Utilities.NormalizeIndexRange", MaximumPosition, "integer", Begin, "nil, integer", End, "nil, integer") end
 			MaximumPosition, Begin = type(MaximumPosition) == "number" and MaximumPosition or #MaximumPosition, Begin or 1
 			if Begin > MaximumPosition or End and (End < -MaximumPosition or End == 0) then return 0, 0 end
 			return math_max(Begin < 0 and MaximumPosition + Begin + 1 or Begin, 1), End and math_min(math_max(End < 0 and (End == Begin and math_max(Begin < 0 and MaximumPosition + Begin + 1 or Begin, 1) or MaximumPosition + End + 1) or (Begin < 0 and MaximumPosition + Begin + End or (End < Begin and Begin or End)), 1), MaximumPosition) or MaximumPosition
@@ -542,7 +542,7 @@ InternalFunctions = {
 	end,
 	
 	GetConditionalProtectedCaller = function(Section, Function, Error)
-		return function(...) InternalFunctions.Assert(Section, pcall(Function, ...) or Configurations.ContinueOnError, Error) end
+		return function(...) Assert(Section, pcall(Function, ...) or Configurations.ContinueOnError, Error) end
 	end,
 	
 	IsType = function(Object, _Type)
@@ -556,7 +556,7 @@ InternalFunctions = {
 			return type(tonumber(Object)) == "number"
 		elseif Type == "userdata" then
 			local UserdataType, UserdataString = ProxyMethods.userdata.GetUserdataType(Object), tostring(Object)
-			return UserdataType == "Instance" and (_LowerType == "service" and Object == game:FindService(pcall(function() return Object.ClassName end) and #Object.ClassName > 0 and Object.ClassName or pcall(game.FindService, game, UserdataString) and UserdataString or "nil") or Object:IsA(_Type)) or _LowerType == UserdataType:lower()
+			return UserdataType == "Instance" and (_LowerType == "instance" or _LowerType == "service" and Object == game:FindService(pcall(function() return Object.ClassName end) and #Object.ClassName > 0 and Object.ClassName or pcall(game.FindService, game, UserdataString) and UserdataString or "nil") or Object:IsA(_Type)) or _LowerType == UserdataType:lower()
 		elseif Type == "number" then
 			local IsInteger = Object % 1 == 0
 			return _LowerType == "integer" and IsInteger or (_LowerType == "float" or _LowerType == "double") and not IsInteger or (_LowerType == "content" or _LowerType == "contentid" or _LowerType == "asset" or _LowerType == "assetid") and ProxyMethods.number.IsContentID(Object)
@@ -587,58 +587,59 @@ InternalFunctions = {
 		else
 			return not not ...
 		end
+	end
+}
+
+--Functions used for assertion
+Assert = setmetatable({
+	ExpectArgument = function(Section, ...)
+		local Arguments = {...}
+		for Index = 1, select("#", ...) do
+			if Arguments[Index] == nil then
+				Log.Error(Section, "Argument #" .. Index .. " expected (got nil)", 1)
+			end
+		end
 	end,
 	
-	Assert = setmetatable({
-		Expect = function(Section, ...)
-			local Arguments = {...}
-			for Index = 1, select("#", ...) do
-				if Arguments[Index] == nil then
-					Log.Error(Section, "Argument #" .. Index .. " expected (got nil)!", 1)
-				end
-			end
-		end,
-		
-		ExpectType = function(Section, ...) --ActualType (object), ExpectedType (string list separated by comma)...
-			local Arguments, IsType = {...}, InternalFunctions.IsType
-			for Index = 1, select("#", ...), 2 do
-				local Argument, ArgumentIndex = Arguments[Index], (Index + 1) / 2 - ((Index + 1) / 2) % 1
-				local ActualType, ExpectedType, IsWrongType = type(Argument), Arguments[Index + 1], true
-				if ExpectedType:find(",") then
-					for ExpectedType in ExpectedType:gmatch("%w+") do
-						if ActualType == ExpectedType or IsType(Argument, ExpectedType) then
-							IsWrongType = false; break
-						end
+	ExpectArgumentType = function(Section, ...) --ActualType (object), ExpectedType (string list separated by comma)...
+		local Arguments, IsType = {...}, InternalFunctions.IsType
+		for Index = 1, select("#", ...), 2 do
+			local Argument, ArgumentIndex = Arguments[Index], (Index + 1) / 2 - ((Index + 1) / 2) % 1
+			local ActualType, ExpectedType, IsWrongType = type(Argument), Arguments[Index + 1], true
+			if ExpectedType:find(",") then
+				for ExpectedType in ExpectedType:gmatch("%w+") do
+					if ActualType == ExpectedType or IsType(Argument, ExpectedType) then
+						IsWrongType = false; break
 					end
-				elseif ActualType == ExpectedType or IsType(Argument, ExpectedType) then
-					IsWrongType = false
 				end
-				if IsWrongType then
-					Log.Error(Section, "Wrong type for argument #" .. ArgumentIndex .. " (" .. ExpectedType:gsub("(.*),", "%1 or") .. " expected, got " .. ActualType .. ")!", 1)
-				end
+			elseif ActualType == ExpectedType or IsType(Argument, ExpectedType) then
+				IsWrongType = false
 			end
-		end,
-		
-		ExpectEveryType = function(Section, TypeExpected, ...)
-			local Arguments, ProcessedArguments, ProcessedArgumentsSize = {...}, {}, 0
-			for Index = 1, select("#", ...) do
-				ProcessedArguments[ProcessedArgumentsSize + 1] = Arguments[Index]
-				ProcessedArguments[ProcessedArgumentsSize + 2] = TypeExpected
-				ProcessedArgumentsSize = ProcessedArgumentsSize + 2
-			end
-			InternalFunctions.Assert.ExpectType(Section, unpack(ProcessedArguments, 1, ProcessedArgumentsSize))
-		end
-	}, {
-		__call = function(Self, Section, ...) --Generic assertion
-			local Arguments = {...}
-			for Index = 1, select("#", ...), 2 do
-				if not Arguments[Index] then
-					Log.Error(Section, Arguments[Index + 1], 1)
-				end
+			if IsWrongType then
+				Log.Error(Section, "Wrong type for argument #" .. ArgumentIndex .. " (" .. ExpectedType:gsub("(.*),", "%1 or") .. " expected, got " .. ActualType .. ")", 1)
 			end
 		end
-	})
-}
+	end,
+	
+	ExpectEveryArgumentType = function(Section, TypeExpected, ...)
+		local Arguments, ProcessedArguments, ProcessedArgumentsSize = {...}, {}, 0
+		for Index = 1, select("#", ...) do
+			ProcessedArguments[ProcessedArgumentsSize + 1] = Arguments[Index]
+			ProcessedArguments[ProcessedArgumentsSize + 2] = TypeExpected
+			ProcessedArgumentsSize = ProcessedArgumentsSize + 2
+		end
+		Assert.ExpectArgumentType(Section, unpack(ProcessedArguments, 1, ProcessedArgumentsSize))
+	end
+}, {
+	__call = function(Self, Section, ...) --Generic assertion
+		local Arguments = {...}
+		for Index = 1, select("#", ...), 2 do
+			if not Arguments[Index] then
+				Log.Error(Section, Arguments[Index + 1], 1)
+			end
+		end
+	end
+})
 
 --Functions used for logging
 Log = setmetatable({
@@ -659,7 +660,7 @@ Log = setmetatable({
 ProxyMethods = setmetatable({
 	string = {
 		CamelCase = function(String, Template) --Use "x" or "X" to indicate words; example: x_X, XX, x-__-X
-			if Configurations.AssertArgumentTypes then InternalFunctions.Assert.ExpectType("Methods.String.CamelCase", String, "string", Template, "nil, string") end
+			if Configurations.AssertArgumentTypes then Assert.ExpectArgumentType("Methods.String.CamelCase", String, "string", Template, "nil, string") end
 			local StringCapitalize = ProxyMethods.string.Capitalize
 			local Words, Separator = ProxyMethods.string.GetWords(String, StringCapitalize)
 			if Template then
@@ -674,12 +675,12 @@ ProxyMethods = setmetatable({
 		end,
 		
 		CharacterAt = function(String, Index)
-			if Configurations.AssertArgumentTypes then InternalFunctions.Assert.ExpectType("Methods.String.CharacterAt", String, "string", Index, "nil, integer") end
+			if Configurations.AssertArgumentTypes then Assert.ExpectArgumentType("Methods.String.CharacterAt", String, "string", Index, "nil, integer") end
 			return String:sub(Index, Index)
 		end,
 		
 		Contains = function(String, Pattern)
-			if Configurations.AssertArgumentTypes then InternalFunctions.Assert.ExpectType("Methods.String.Contains", String, "string", Pattern, "string, number") end
+			if Configurations.AssertArgumentTypes then Assert.ExpectArgumentType("Methods.String.Contains", String, "string", Pattern, "string, number") end
 			if Pattern == "" then return nil else Pattern = tostring(Pattern) end
 			local MatchFound = not not (CaseInsensitive and String:lower() or String):match(CaseInsensitive and Pattern:lower() or Pattern)
 			if MatchFound then
@@ -694,7 +695,7 @@ ProxyMethods = setmetatable({
 		end,
 		
 		EndsWith = function(String, Substring, MaximumIndex, CaseInsensitive)
-			if Configurations.AssertArgumentTypes then InternalFunctions.Assert.ExpectType("Methods.String.EndsWith", String, "string", Substring, "string, number", MaximumIndex, "nil, integer", CaseInsensitive, "nil, boolean") end
+			if Configurations.AssertArgumentTypes then Assert.ExpectArgumentType("Methods.String.EndsWith", String, "string", Substring, "string, number", MaximumIndex, "nil, integer", CaseInsensitive, "nil, boolean") end
 			Substring = tostring(Substring)
 			local StringLength, SubstringLength = #String, #Substring
 			if SubstringLength > StringLength then return false end
@@ -702,33 +703,33 @@ ProxyMethods = setmetatable({
 		end,
 		
 		EscapeRegularExpression = function(String)
-			if Configurations.AssertArgumentTypes then InternalFunctions.Assert.ExpectType("Methods.String.EscapeRegularExpression", String, "string") end
+			if Configurations.AssertArgumentTypes then Assert.ExpectArgumentType("Methods.String.EscapeRegularExpression", String, "string") end
 			return (String:gsub("([%p%s])", "%%%1"))
 		end,
 		
 		Execute = function(String, ...)
-			InternalFunctions.Assert("Methods.String.Execute", Capabilities.CanUseLoadstring, "loadstring is not available in local scripts!")
-			if Configurations.AssertArgumentTypes then InternalFunctions.Assert.ExpectType("Methods.String.Execute", String, "string") end
+			Assert("Methods.String.Execute", Capabilities.CanUseLoadstring, "loadstring is not available in local scripts!")
+			if Configurations.AssertArgumentTypes then Assert.ExpectArgumentType("Methods.String.Execute", String, "string") end
 			return loadstring(String)(...)
 		end,
 		
 		GetNumbers = function(String, Processor)
-			if Configurations.AssertArgumentTypes then InternalFunctions.Assert.ExpectType("Methods.String.GetNumbers", String, "string", Processor, "nil, function") end
+			if Configurations.AssertArgumentTypes then Assert.ExpectArgumentType("Methods.String.GetNumbers", String, "string", Processor, "nil, function") end
 			return ProxyMethods.string.MatchAllByPattern(String, "%d+[%.%d+]*", Processor)
 		end,
 		
 		GetWords = function(String, Processor)
-			if Configurations.AssertArgumentTypes then InternalFunctions.Assert.ExpectType("Methods.String.GetWords", String, "string", Processor, "nil, function") end
+			if Configurations.AssertArgumentTypes then Assert.ExpectArgumentType("Methods.String.GetWords", String, "string", Processor, "nil, function") end
 			return ProxyMethods.string.MatchAllByPattern(String, "%w+", Processor)
 		end,
 		
 		IndexOf = function(String, Pattern, MinimumIndex)
-			if Configurations.AssertArgumentTypes then InternalFunctions.Assert.ExpectType("Methods.String.IndexOf", String, "string", Pattern, "string, number", MinimumIndex, "nil, integer") end
+			if Configurations.AssertArgumentTypes then Assert.ExpectArgumentType("Methods.String.IndexOf", String, "string", Pattern, "string, number", MinimumIndex, "nil, integer") end
 			return (String:find(tostring(Pattern), MinimumIndex and MinimumIndex < 1 and 1 or MinimumIndex))
 		end,
 		
 		InvertCase = function(String)
-			if Configurations.AssertArgumentTypes then InternalFunctions.Assert.ExpectType("Methods.String.InvertCase", String, "string") end
+			if Configurations.AssertArgumentTypes then Assert.ExpectArgumentType("Methods.String.InvertCase", String, "string") end
 			local Characters, CharactersSize = {}, 0
 			for Index = 1, #String do
 				local Character = String:sub(Index, Index)
@@ -738,12 +739,12 @@ ProxyMethods = setmetatable({
 		end,
 		
 		IsBlank = function(String)
-			if Configurations.AssertArgumentTypes then InternalFunctions.Assert.ExpectType("Methods.String.IsBlank", String, "string") end
+			if Configurations.AssertArgumentTypes then Assert.ExpectArgumentType("Methods.String.IsBlank", String, "string") end
 			return not String:find("%S")
 		end,
 		
 		IsContentURL = function(String, Timeout)
-			if Configurations.AssertArgumentTypes then InternalFunctions.Assert.ExpectType("Methods.String.IsContentURL", String, "string", Timeout, "nil, number") end
+			if Configurations.AssertArgumentTypes then Assert.ExpectArgumentType("Methods.String.IsContentURL", String, "string", Timeout, "nil, number") end
 			String = type(tonumber(String)) == "number" and "rbxassetid://" .. String or String:lower()
 			local ContentProvider, Timeout, IsInvalid, Connection = Services.ContentProvider, tick() + (String:sub(1, 9) == "rbxasset:" and 0.02 or Timeout or 5)
 			Connection = Services.LogService.MessageOut:connect(function(Message, Type)
@@ -757,20 +758,20 @@ ProxyMethods = setmetatable({
 		end,
 		
 		LastIndexOf = function(String, Pattern, MaximumIndex)
-			if Configurations.AssertArgumentTypes then InternalFunctions.Assert.ExpectType("Methods.String.LastIndexOf", String, "string", Pattern, "string, number", MaximumIndex, "nil, integer") end
+			if Configurations.AssertArgumentTypes then Assert.ExpectArgumentType("Methods.String.LastIndexOf", String, "string", Pattern, "string, number", MaximumIndex, "nil, integer") end
 			Pattern = tostring(Pattern)
 			local Found = String:reverse():find(Pattern:reverse(), #String - (MaximumIndex and (MaximumIndex > #String and #String or MaximumIndex) - #Pattern or #String))
 			return Found and #String - #Pattern - Found + 2 or nil
 		end,
 		
 		LoadString = function(String)
-			InternalFunctions.Assert("Methods.String.LoadString", Capabilities.CanUseLoadstring, "loadstring is not available in local scripts!")
-			if Configurations.AssertArgumentTypes then InternalFunctions.Assert.ExpectType("Methods.String.LoadString", String, "string") end
+			Assert("Methods.String.LoadString", Capabilities.CanUseLoadstring, "loadstring is not available in local scripts!")
+			if Configurations.AssertArgumentTypes then Assert.ExpectArgumentType("Methods.String.LoadString", String, "string") end
 			return loadstring(String)
 		end,
 		
 		MatchAllByPattern = function(String, Pattern, Processor)
-			if Configurations.AssertArgumentTypes then InternalFunctions.Assert.ExpectType("Methods.String.MatchAllByPattern", String, "string", Pattern, "string, number", Processor, "nil, function") end
+			if Configurations.AssertArgumentTypes then Assert.ExpectArgumentType("Methods.String.MatchAllByPattern", String, "string", Pattern, "string, number", Processor, "nil, function") end
 			local Strings, StringsSize = {}, 0
 			for String in String:gmatch(Pattern) do
 				StringsSize = StringsSize + 1; Strings[StringsSize] = String
@@ -784,32 +785,32 @@ ProxyMethods = setmetatable({
 		end,
 		
 		Pad = function(String, Padding, Side)
-			if Configurations.AssertArgumentTypes then InternalFunctions.Assert.ExpectType("Methods.String.Pad", String, "string", Padding, "string, number", Side, "nil, string") end
+			if Configurations.AssertArgumentTypes then Assert.ExpectArgumentType("Methods.String.Pad", String, "string", Padding, "string, number", Side, "nil, string") end
 			return not Side and Padding .. String .. Padding or Side == "Left" and Padding .. String or Side == "Right" and String .. Padding or String
 		end,
 		
 		ParseBinary = function(String)
-			if Configurations.AssertArgumentTypes then InternalFunctions.Assert.ExpectType("Methods.String.ParseBinary", String, "string") end
+			if Configurations.AssertArgumentTypes then Assert.ExpectArgumentType("Methods.String.ParseBinary", String, "string") end
 			return tonumber(String:match("0?b?([01]+)"), 2)
 		end,
 		
 		ParseDouble = function(String)
-			if Configurations.AssertArgumentTypes then InternalFunctions.Assert.ExpectType("Methods.String.ParseDouble", String, "string") end
+			if Configurations.AssertArgumentTypes then Assert.ExpectArgumentType("Methods.String.ParseDouble", String, "string") end
 			return tonumber(String:match("%d+%.?%d*"))
 		end,
 		
 		ParseHex = function(String)
-			if Configurations.AssertArgumentTypes then InternalFunctions.Assert.ExpectType("Methods.String.ParseHex", String, "string") end
+			if Configurations.AssertArgumentTypes then Assert.ExpectArgumentType("Methods.String.ParseHex", String, "string") end
 			return tonumber(String:match("0?x?(%x+)"), 16)
 		end,
 		
 		ParseInteger = function(String)
-			if Configurations.AssertArgumentTypes then InternalFunctions.Assert.ExpectType("Methods.String.ParseInteger", String, "string") end
+			if Configurations.AssertArgumentTypes then Assert.ExpectArgumentType("Methods.String.ParseInteger", String, "string") end
 			return tonumber(String:match("%d+"))
 		end,
 		
 		Split = function(String, Delimiter) --Fix
-			if Configurations.AssertArgumentTypes then InternalFunctions.Assert.ExpectType("Methods.String.Split", String, "string", Delimiter, "nil, string, number") end
+			if Configurations.AssertArgumentTypes then Assert.ExpectArgumentType("Methods.String.Split", String, "string", Delimiter, "nil, string, number") end
 			local Delimiter, Pieces, PiecesSize = ProxyMethods.string.EscapeRegularExpression(Delimiter and tostring(Delimiter) or ""), {}, 0
 			for Piece in String:gmatch(Delimiter == "" and "." or "[^" .. Delimiter .. "]-[^" .. Delimiter .. "]+") do
 				PiecesSize = PiecesSize + 1; Pieces[PiecesSize] = Piece:gsub("^" .. Delimiter, "")
@@ -818,13 +819,13 @@ ProxyMethods = setmetatable({
 		end,
 		
 		StartsWith = function(String, Substring, MinimumIndex, CaseInsensitive)
-			if Configurations.AssertArgumentTypes then InternalFunctions.Assert.ExpectType("Methods.String.StartsWith", String, "string", Substring, "string, number", MinimumIndex, "nil, integer", CaseInsensitive, "nil, boolean") end
+			if Configurations.AssertArgumentTypes then Assert.ExpectArgumentType("Methods.String.StartsWith", String, "string", Substring, "string, number", MinimumIndex, "nil, integer", CaseInsensitive, "nil, boolean") end
 			Substring = tostring(Substring)
 			return (CaseInsensitive and String:lower() or String):sub(MinimumIndex or 1, (MinimumIndex or 0) + #Substring) == (CaseInsensitive and Substring:lower() or Substring)
 		end,
 		
 		ToBoolean = function(String, Keywords)
-			if Configurations.AssertArgumentTypes then InternalFunctions.Assert.ExpectType("Methods.String.ToBoolean", String, "string", Keywords, "nil, table") end
+			if Configurations.AssertArgumentTypes then Assert.ExpectArgumentType("Methods.String.ToBoolean", String, "string", Keywords, "nil, table") end
 			Keywords = Keywords or {[true] = {"true", "on", "yes", "1"}, [false] = {"false", "off", "no", "0"}}
 			if type(Keywords[true]) == "table" or type(Keywords[false]) == "table" then
 				if Keywords[true] then
@@ -854,7 +855,7 @@ ProxyMethods = setmetatable({
 		end,
 		
 		ToLowerCase = function(String, Begin, End)
-			if Configurations.AssertArgumentTypes then InternalFunctions.Assert.ExpectType("Methods.String.ToLowercase", String, "string", Begin, "nil, integer", End, "nil, integer") end
+			if Configurations.AssertArgumentTypes then Assert.ExpectArgumentType("Methods.String.ToLowercase", String, "string", Begin, "nil, integer", End, "nil, integer") end
 			Begin, End = Functions.Utilities.NormalizeIndexRange(#String, Begin, End)
 			return String:sub(1, Begin - 1) .. String:sub(Begin, End):lower() .. String:sub(End + 1, #String)
 		end,
@@ -862,13 +863,13 @@ ProxyMethods = setmetatable({
 		ToNumber = tonumber,
 		
 		ToUpperCase = function(String, Begin, End)
-			if Configurations.AssertArgumentTypes then InternalFunctions.Assert.ExpectType("Methods.String.ToUppercase", String, "string", Begin, "nil, integer", End, "nil, integer") end
+			if Configurations.AssertArgumentTypes then Assert.ExpectArgumentType("Methods.String.ToUppercase", String, "string", Begin, "nil, integer", End, "nil, integer") end
 			Begin, End = Functions.Utilities.NormalizeIndexRange(#String, Begin, End)
 			return String:sub(1, Begin - 1) .. String:sub(Begin, End):upper() .. String:sub(End + 1, #String)
 		end,
 		
 		Trim = function(String, Side)
-			if Configurations.AssertArgumentTypes then InternalFunctions.Assert.ExpectType("Methods.String.Trim", String, "string", Side, "nil, string") end
+			if Configurations.AssertArgumentTypes then Assert.ExpectArgumentType("Methods.String.Trim", String, "string", Side, "nil, string") end
 			return String:match("^" .. ((not Side or Side == "Left") and "%s*" or "") .. "(.-)" .. ((not Side or Side == "Right") and "%s*" or "") .. "$")
 		end,
 		
@@ -876,12 +877,12 @@ ProxyMethods = setmetatable({
 		
 		--Metamethods
 		Add = function(String, AddWith)
-			InternalFunctions.Assert("Methods.String.Add", type(AddWith) ~= "number" or ProxyMethods.number.IsInteger(AddWith), "The number added with must be an integer!")
+			Assert("Methods.String.Add", type(AddWith) ~= "number" or ProxyMethods.number.IsInteger(AddWith), "The number added with must be an integer!")
 			return type(AddWith) == "number" and (AddWith == 0 and String or not ProxyMethods.number.IsPositive(AddWith) and ProxyMethods.string.Subtract(String, -AddWith)) or ProxyMethods.string.Concatenate(String, AddWith)
 		end,
 		
 		Subtract = function(String, SubtractWith)
-			InternalFunctions.Assert("Methods.String.Subtract", type(SubtractWith) == "string" or type(SubtractWith) == "number" and ProxyMethods.number.IsInteger(SubtractWith) and (SubtractWith == 0 or ProxyMethods.number.IsPositive(SubtractWith)), "The string must be subtracted with a string or a positive integer!")
+			Assert("Methods.String.Subtract", type(SubtractWith) == "string" or type(SubtractWith) == "number" and ProxyMethods.number.IsInteger(SubtractWith) and (SubtractWith == 0 or ProxyMethods.number.IsPositive(SubtractWith)), "The string must be subtracted with a string or a positive integer!")
 			return type(SubtractWith) == "number" and (SubtractWith == 0 and String or String:sub(Functions.Utilities.NormalizeIndexRange(#String, 1, #String - SubtractWith))) or (String:gsub(SubtractWith, ""))
 		end,
 		
@@ -911,7 +912,7 @@ ProxyMethods = setmetatable({
 		Ceiling = math_ceil,
 		
 		Clamp = function(Number, LowerLimit, UpperLimit)
-			if Configurations.AssertArgumentTypes then InternalFunctions.Assert.ExpectType("Methods.Number.Clamp", LowerLimit, "number", UpperLimit, "nil, number") end
+			if Configurations.AssertArgumentTypes then Assert.ExpectArgumentType("Methods.Number.Clamp", LowerLimit, "number", UpperLimit, "nil, number") end
 			if not UpperLimit then LowerLimit, UpperLimit = 1, LowerLimit end
 			if Number < LowerLimit then return LowerLimit end
 			if Number > UpperLimit then return UpperLimit end
@@ -921,19 +922,19 @@ ProxyMethods = setmetatable({
 		Floor = math_floor,
 		
 		FractionalPart = function(Number)
-			if Configurations.AssertArgumentTypes then InternalFunctions.Assert.ExpectType("Methods.Number.FractionalPart", Number, "number") end
+			if Configurations.AssertArgumentTypes then Assert.ExpectArgumentType("Methods.Number.FractionalPart", Number, "number") end
 			return Number >= 0 and Number % 1 or Number % -1
 		end,
 		
 		FromCharacterCode = string.char,
 		
 		IntegralPart = function(Number)
-			if Configurations.AssertArgumentTypes then InternalFunctions.Assert.ExpectType("Methods.Number.IntegralPart", Number, "number") end
+			if Configurations.AssertArgumentTypes then Assert.ExpectArgumentType("Methods.Number.IntegralPart", Number, "number") end
 			return Number - (Number > 0 and Number % 1 or Number % -1)
 		end,
 		
 		Log = function(Number, Base)
-			if Configurations.AssertArgumentTypes then InternalFunctions.Assert.ExpectType("Methods.Number.Log", Number, "number") end
+			if Configurations.AssertArgumentTypes then Assert.ExpectArgumentType("Methods.Number.Log", Number, "number") end
 			return Base and math_log(Number) / math_log(Base) or math_log10(Number)
 		end,
 		
@@ -944,23 +945,23 @@ ProxyMethods = setmetatable({
 		RandomSeed = math.randomseed,
 		
 		Root = function(Number, Root)
-			if Configurations.AssertArgumentTypes then InternalFunctions.Assert.ExpectType("Methods.Number.Root", Number, "number", Root, "number") end
+			if Configurations.AssertArgumentTypes then Assert.ExpectArgumentType("Methods.Number.Root", Number, "number", Root, "number") end
 			return Number ^ (1 / Root)
 		end,
 		
 		Round = function(Number, Precision)
-			if Configurations.AssertArgumentTypes then InternalFunctions.Assert.ExpectType("Methods.Number.Round", Number, "number", Precision, "nil, integer") end
+			if Configurations.AssertArgumentTypes then Assert.ExpectArgumentType("Methods.Number.Round", Number, "number", Precision, "nil, integer") end
 			local Shift = 10 ^ (Precision or 0)
 			return math_floor(Number * Shift + 0.5) / Shift
 		end,
 		
 		Sign = function(Number)
-			if Configurations.AssertArgumentTypes then InternalFunctions.Assert.ExpectType("Methods.Number.Sign", Number, "number") end
+			if Configurations.AssertArgumentTypes then Assert.ExpectArgumentType("Methods.Number.Sign", Number, "number") end
 			return Number > 0 and 1 or Number < 0 and -1 or 0
 		end,
 		
 		TimeElapsed = function(TickTime) --Returns tick() - number; use by doing _(tick()):TimeElapsed()
-			if Configurations.AssertArgumentTypes then InternalFunctions.Assert.ExpectType("Methods.Number.TimeElapsed", TickTime, "number") end
+			if Configurations.AssertArgumentTypes then Assert.ExpectArgumentType("Methods.Number.TimeElapsed", TickTime, "number") end
 			return tick() - TickTime
 		end,
 		
@@ -970,7 +971,7 @@ ProxyMethods = setmetatable({
 		ArcSine = math.asin,
 		
 		ArcTangent = function(Number, Adjacent)
-			if Configurations.AssertArgumentTypes then InternalFunctions.Assert.ExpectType("Methods.Number.ArcTangent", Number, "number", Adjacent, "nil, number") end
+			if Configurations.AssertArgumentTypes then Assert.ExpectArgumentType("Methods.Number.ArcTangent", Number, "number", Adjacent, "nil, number") end
 			return Adjacent and math_atan2(Number, Adjacent) or math_atan(Number)
 		end,
 		
@@ -979,17 +980,17 @@ ProxyMethods = setmetatable({
 		Sine = math.sin,
 		
 		HyperbolicArcCosine = function(Number)
-			if Configurations.AssertArgumentTypes then InternalFunctions.Assert.ExpectType("Methods.Number.HyperbolicArcCosine", Number, "number") end
+			if Configurations.AssertArgumentTypes then Assert.ExpectArgumentType("Methods.Number.HyperbolicArcCosine", Number, "number") end
 			return math_log(Number + (Number ^ 2 - 1) ^ 0.5)
 		end,
 		
 		HyperbolicArcSine = function(Number)
-			if Configurations.AssertArgumentTypes then InternalFunctions.Assert.ExpectType("Methods.Number.HyperbolicArcSine", Number, "number") end
+			if Configurations.AssertArgumentTypes then Assert.ExpectArgumentType("Methods.Number.HyperbolicArcSine", Number, "number") end
 			return Number == -math_huge and Number or math_log(Number + (Number ^ 2 + 1) ^ 0.5)
 		end,
 		
 		HyperbolicArcTangent = function(Number)
-			if Configurations.AssertArgumentTypes then InternalFunctions.Assert.ExpectType("Methods.Number.HyperbolicArcTangent", Number, "number") end
+			if Configurations.AssertArgumentTypes then Assert.ExpectArgumentType("Methods.Number.HyperbolicArcTangent", Number, "number") end
 			return math_log((1 + Number) / (1 - Number)) / 2
 		end,
 		
@@ -1003,43 +1004,43 @@ ProxyMethods = setmetatable({
 		
 		--Type-check functions
 		IsContentID = function(Number)
-			if Configurations.AssertArgumentTypes then InternalFunctions.Assert.ExpectType("Methods.Number.IsContentID", Number, "integer") end
+			if Configurations.AssertArgumentTypes then Assert.ExpectArgumentType("Methods.Number.IsContentID", Number, "integer") end
 			return ProxyMethods.string.IsContentURL("rbxassetid://" .. Number)
 		end,
 		
 		IsEven = function(Number)
-			if Configurations.AssertArgumentTypes then InternalFunctions.Assert.ExpectType("Methods.Number.IsEven", Number, "number") end
+			if Configurations.AssertArgumentTypes then Assert.ExpectArgumentType("Methods.Number.IsEven", Number, "number") end
 			return Number % 2 == 0
 		end,
 		
 		IsFinite = function(Number)
-			if Configurations.AssertArgumentTypes then InternalFunctions.Assert.ExpectType("Methods.Number.IsFinite", Number, "number") end
+			if Configurations.AssertArgumentTypes then Assert.ExpectArgumentType("Methods.Number.IsFinite", Number, "number") end
 			local String = tostring(math_abs(Number))
 			return String ~= "1.#QNAN" and String ~= "1.#INF"
 		end,
 		
 		IsInteger = function(Number)
-			if Configurations.AssertArgumentTypes then InternalFunctions.Assert.ExpectType("Methods.Number.IsInteger", Number, "number") end
+			if Configurations.AssertArgumentTypes then Assert.ExpectArgumentType("Methods.Number.IsInteger", Number, "number") end
 			return Number % 1 == 0
 		end,
 		
 		IsNaN = function(Number)
-			if Configurations.AssertArgumentTypes then InternalFunctions.Assert.ExpectType("Methods.Number.IsNaN", Number, "number") end
+			if Configurations.AssertArgumentTypes then Assert.ExpectArgumentType("Methods.Number.IsNaN", Number, "number") end
 			return Number ~= Number
 		end,
 		
 		IsStringEqual = function(Number, OtherNumber)
-			if Configurations.AssertArgumentTypes then InternalFunctions.Assert.ExpectType("Methods.Number.IsStringEqual", Number, "number", OtherNumber, "number, string") end
+			if Configurations.AssertArgumentTypes then Assert.ExpectArgumentType("Methods.Number.IsStringEqual", Number, "number", OtherNumber, "number, string") end
 			return tostring(Number) == (type(OtherNumber) == "string" and OtherNumber or tostring(OtherNumber))
 		end,
 		
 		IsWithinRange = function(Number, Minimum, Maximum)
-			if Configurations.AssertArgumentTypes then InternalFunctions.Assert.ExpectType("Methods.Number.IsWithinRange", Number, "number", Minimum, "number", Maximum, "number") end
+			if Configurations.AssertArgumentTypes then Assert.ExpectArgumentType("Methods.Number.IsWithinRange", Number, "number", Minimum, "number", Maximum, "number") end
 			return Number >= Minimum and Number <= Maximum
 		end,
 		
 		IsWithinTolerance = function(Number, BaseLine, Tolerance)
-			if Configurations.AssertArgumentTypes then InternalFunctions.Assert.ExpectType("Methods.Number.IsWithinTolerance", Number, "number", BaseLine, "number", Tolerance, "number") end
+			if Configurations.AssertArgumentTypes then Assert.ExpectArgumentType("Methods.Number.IsWithinTolerance", Number, "number", BaseLine, "number", Tolerance, "number") end
 			return BaseLine >= Number - Tolerance and BaseLine <= Number + Tolerance
 		end,
 		
@@ -1073,7 +1074,7 @@ ProxyMethods = setmetatable({
 	
 	boolean = {
 		ToNumber = function(Boolean)
-			if Configurations.AssertArgumentTypes then InternalFunctions.Assert.ExpectType("Methods.Boolean.ToNumber", Boolean, "boolean") end
+			if Configurations.AssertArgumentTypes then Assert.ExpectArgumentType("Methods.Boolean.ToNumber", Boolean, "boolean") end
 			return Boolean and 1 or 0
 		end,
 		
@@ -1112,7 +1113,7 @@ ProxyMethods = setmetatable({
 	table = setmetatable({
 		--Non-mutative methods
 		Chunk = function(Table, ChunkSize)
-			if Configurations.AssertArgumentTypes then InternalFunctions.Assert.ExpectType("Methods.Table.Chunk", Table, "table", ChunkSize, "integer") end
+			if Configurations.AssertArgumentTypes then Assert.ExpectArgumentType("Methods.Table.Chunk", Table, "table", ChunkSize, "integer") end
 			local NewTable, NewTableSize, TableIndex = {}, 0, 1
 			while TableIndex <= #Table do
 				local CurrentChunk = {}
@@ -1125,7 +1126,7 @@ ProxyMethods = setmetatable({
 		end,
 		
 		Clone = function(Table, ShallowClone)
-			if Configurations.AssertArgumentTypes then InternalFunctions.Assert.ExpectType("Methods.Table.Clone", Table, "table", ShallowClone, "nil, boolean") end
+			if Configurations.AssertArgumentTypes then Assert.ExpectArgumentType("Methods.Table.Clone", Table, "table", ShallowClone, "nil, boolean") end
 			local NewTable, Metatable, TableClone = {}, getmetatable(Table), ProxyMethods.table.Clone
 			for Key, Value in next, Table do
 				if type(Value) == "table" and not ShallowClone and Value ~= Table then
@@ -1137,7 +1138,7 @@ ProxyMethods = setmetatable({
 		end,
 		
 		DisableRewriting = function(Table, DeepApply, WarnRewriteAttempts)
-			if Configurations.AssertArgumentTypes then InternalFunctions.Assert.ExpectType("Methods.Table.DisableRewriting", Table, "table", DeepApply, "nil, boolean", WarnRewriteAttemps, "nil, boolean") end
+			if Configurations.AssertArgumentTypes then Assert.ExpectArgumentType("Methods.Table.DisableRewriting", Table, "table", DeepApply, "nil, boolean", WarnRewriteAttemps, "nil, boolean") end
 			local GetUnwrappedObject, TableDisableRewriting = InternalFunctions.GetUnwrappedObject, ProxyMethods.table.DisableRewriting
 			local Iterator = function(Key1, Key2) return next(Table, GetUnwrappedObject(Key1 or Key2)) end
 			if DeepApply then
@@ -1161,7 +1162,7 @@ ProxyMethods = setmetatable({
 		end,
 		
 		DisableWriting = function(Table, DeepApply, WarnWriteAttempts)
-			if Configurations.AssertArgumentTypes then InternalFunctions.Assert.ExpectType("Methods.Table.DisableWriting", Table, "table", DeepApply, "nil, boolean", WarnWriteAttempts, "nil, boolean") end
+			if Configurations.AssertArgumentTypes then Assert.ExpectArgumentType("Methods.Table.DisableWriting", Table, "table", DeepApply, "nil, boolean", WarnWriteAttempts, "nil, boolean") end
 			local GetUnwrappedObject = InternalFunctions.GetUnwrappedObject
 			local Iterator = function(Key1, Key2) return next(Table, GetUnwrappedObject(Key1 or Key2)) end
 			if DeepApply then
@@ -1183,7 +1184,7 @@ ProxyMethods = setmetatable({
 		end,
 		
 		Every = function(Table, Callback)
-			if Configurations.AssertArgumentTypes then InternalFunctions.Assert.ExpectType("Methods.Table.Every", Table, "table", Callback, "nil, function") end
+			if Configurations.AssertArgumentTypes then Assert.ExpectArgumentType("Methods.Table.Every", Table, "table", Callback, "nil, function") end
 			Callback = Callback or InternalFunctions.Identity
 			for Key, Value in next, Table do
 				if not Callback(Value, Key) then
@@ -1194,7 +1195,7 @@ ProxyMethods = setmetatable({
 		end,
 		
 		Find = function(Table, Callback, DeepFind)
-			if Configurations.AssertArgumentTypes then InternalFunctions.Assert.ExpectType("Methods.Table.Find", Table, "table", Callback, "function", DeepFind, "nil, boolean") end
+			if Configurations.AssertArgumentTypes then Assert.ExpectArgumentType("Methods.Table.Find", Table, "table", Callback, "function", DeepFind, "nil, boolean") end
 			local Found, FoundSize, TableFind = {}, 0, ProxyMethods.table.Find
 			for Key, Value in next, Table do
 				if type(Value) == "table" and DeepFind then
@@ -1210,7 +1211,7 @@ ProxyMethods = setmetatable({
 		end,
 		
 		ForEach = function(Table, Callback, DeepApply)
-			if Configurations.AssertArgumentTypes then InternalFunctions.Assert.ExpectType("Methods.Table.ForEach", Callback, "function", DeepApply, "nil, boolean") end
+			if Configurations.AssertArgumentTypes then Assert.ExpectArgumentType("Methods.Table.ForEach", Callback, "function", DeepApply, "nil, boolean") end
 			for Key, Value in next, Table do
 				if type(Value) == "table" and DeepApply then
 					ProxyMethods.table.ForEach(Value, Callback, true)
@@ -1222,7 +1223,7 @@ ProxyMethods = setmetatable({
 		end,
 		
 		GetAllChildren = function(Table, Type, DeepGet)
-			if Configurations.AssertArgumentTypes then InternalFunctions.Assert.ExpectType("Methods.Table.GetAllChildren", Table, "table", Type, "anything", DeepGet, "nil, boolean") end
+			if Configurations.AssertArgumentTypes then Assert.ExpectArgumentType("Methods.Table.GetAllChildren", Table, "table", Type, "anything", DeepGet, "nil, boolean") end
 			local Objects, ObjectsSize = {}, 0
 			local TableGetSize, TableGetAllChildren, IsType = ProxyMethods.table.GetSize, ProxyMethods.table.GetAllChildren, InternalFunctions.IsType
 			for __, Object in next, Table do
@@ -1247,19 +1248,19 @@ ProxyMethods = setmetatable({
 		end,
 		
 		GetArray = function(Table)
-			if Configurations.AssertArgumentTypes then InternalFunctions.Assert.ExpectType("Methods.Table.GetArray", Table, "table") end
+			if Configurations.AssertArgumentTypes then Assert.ExpectArgumentType("Methods.Table.GetArray", Table, "table") end
 			local ArrayPart = {}
 			for Index, Value in ipairs(Table) do ArrayPart[Index] = Value end
 			return ArrayPart
 		end,
 		
 		GetArraySize = function(Table)
-			if Configurations.AssertArgumentTypes then InternalFunctions.Assert.ExpectType("Methods.Table.GetArraySize", Table, "table") end
+			if Configurations.AssertArgumentTypes then Assert.ExpectArgumentType("Methods.Table.GetArraySize", Table, "table") end
 			return #Table
 		end,
 		
 		GetChildPath = function(Table, Object)
-			if Configurations.AssertArgumentTypes then InternalFunctions.Assert.ExpectType("Methods.Table.GetChildPath", Table, "table") end
+			if Configurations.AssertArgumentTypes then Assert.ExpectArgumentType("Methods.Table.GetChildPath", Table, "table") end
 			local Path, PathSize = {}, 0
 			for Key, Value in next, Table do
 				PathSize = PathSize + 1; Path[PathSize] = Key
@@ -1279,7 +1280,7 @@ ProxyMethods = setmetatable({
 		end,
 		
 		GetHash = function(Table)
-			if Configurations.AssertArgumentTypes then InternalFunctions.Assert.ExpectType("Methods.Table.GetHash", Table, "table") end
+			if Configurations.AssertArgumentTypes then Assert.ExpectArgumentType("Methods.Table.GetHash", Table, "table") end
 			local HashPart, ArrayIndices = {}, {}
 			for Index in ipairs(Table) do ArrayIndices[Index] = true end
 			for Key, Value in next, Table do
@@ -1289,14 +1290,14 @@ ProxyMethods = setmetatable({
 		end,
 		
 		GetHashSize = function(Table)
-			if Configurations.AssertArgumentTypes then InternalFunctions.Assert.ExpectType("Methods.Table.GetHashSize", Table, "table") end
+			if Configurations.AssertArgumentTypes then Assert.ExpectArgumentType("Methods.Table.GetHashSize", Table, "table") end
 			local TableSize = 0
 			for __ in next, Table do TableSize = TableSize + 1 end
 			return TableSize - #Table
 		end,
 		
 		GetKeys = function(Table, NumericKeysOnly)
-			if Configurations.AssertArgumentTypes then InternalFunctions.Assert.ExpectType("Methods.Table.GetKeys", Table, "table", NumericKeysOnly, "nil, boolean") end
+			if Configurations.AssertArgumentTypes then Assert.ExpectArgumentType("Methods.Table.GetKeys", Table, "table", NumericKeysOnly, "nil, boolean") end
 			local Keys, KeysSize = {}, 0
 			for Key, Value in next, Table do
 				if not NumericKeysOnly or type(Key) == "number" then
@@ -1307,7 +1308,7 @@ ProxyMethods = setmetatable({
 		end,
 		
 		GetNest = function(Table, Path)
-			if Configurations.AssertArgumentTypes then InternalFunctions.Assert.ExpectType("Methods.Table.GetNest", Table, "table", Path, "string") end
+			if Configurations.AssertArgumentTypes then Assert.ExpectArgumentType("Methods.Table.GetNest", Table, "table", Path, "string") end
 			local LastLevel = Table
 			for Level in Path:gmatch("%.-[^%.]+") do
 				local Level = Level:gsub("^%.", "")
@@ -1322,7 +1323,7 @@ ProxyMethods = setmetatable({
 		end,
 		
 		GetOriginChildTable = function(Table, Object)
-			if Configurations.AssertArgumentTypes then InternalFunctions.Assert.ExpectType("Methods.Table.GetOriginChildTale", Table, "table") end
+			if Configurations.AssertArgumentTypes then Assert.ExpectArgumentType("Methods.Table.GetOriginChildTale", Table, "table") end
 			for __, ChildTable in next, ProxyMethods.table.GetAllChildren(Table, "Table", true) do
 				for __, Value in next, ChildTable do
 					if Value == Object then return ChildTable end
@@ -1332,7 +1333,7 @@ ProxyMethods = setmetatable({
 		end,
 		
 		GetValues = function(Table, NumericKeysOnly)
-			if Configurations.AssertArgumentTypes then InternalFunctions.Assert.ExpectType("Methods.Table.GetValues", Table, "table", NumericKeysOnly, "nil, boolean") end
+			if Configurations.AssertArgumentTypes then Assert.ExpectArgumentType("Methods.Table.GetValues", Table, "table", NumericKeysOnly, "nil, boolean") end
 			local Values, ValuesSize = {}, 0
 			for Key, Value in next, Table do
 				if not NumericKeysOnly or type(Key) == "number" then
@@ -1343,19 +1344,19 @@ ProxyMethods = setmetatable({
 		end,
 		
 		HasArray = function(Table)
-			if Configurations.AssertArgumentTypes then InternalFunctions.Assert.ExpectType("Methods.Table.HasArray", Table, "table") end
+			if Configurations.AssertArgumentTypes then Assert.ExpectArgumentType("Methods.Table.HasArray", Table, "table") end
 			return #Table > 0
 		end,
 		
 		HasHash = function(Table)
-			if Configurations.AssertArgumentTypes then InternalFunctions.Assert.ExpectType("Methods.Table.HasHash", Table, "table") end
+			if Configurations.AssertArgumentTypes then Assert.ExpectArgumentType("Methods.Table.HasHash", Table, "table") end
 			local TotalSize = 0
 			for __ in next, Table do TotalSize = TotalSize + 1 end
 			return TotalSize > 0 and TotalSize > #Table
 		end,
 		
 		IndexOf = function(Table, Object, MinimumIndex)
-			if Configurations.AssertArgumentTypes then InternalFunctions.Assert.ExpectType("Methods.Table.IndexOf", Table, "table", Object, "anything", MinimumIndex, "nil, integer") end
+			if Configurations.AssertArgumentTypes then Assert.ExpectArgumentType("Methods.Table.IndexOf", Table, "table", Object, "anything", MinimumIndex, "nil, integer") end
 			if MinimumIndex then
 				local Keys, Values, MinimumIndex, PassedMinimumIndex = ProxyMethods.table.GetKeys(Table), ProxyMethods.table.GetValues(Table), type(MinimumIndex) == "number" and MinimumIndex < 1 and 1 or MinimumIndex
 				for Index, Value in next, Values do
@@ -1371,7 +1372,7 @@ ProxyMethods = setmetatable({
 		end,
 		
 		Intersect = function(Table, OtherTable)
-			if Configurations.AssertArgumentTypes then InternalFunctions.Assert.ExpectType("Methods.Table.Intersect", Table, "table", OtherTable, "table") end
+			if Configurations.AssertArgumentTypes then Assert.ExpectArgumentType("Methods.Table.Intersect", Table, "table", OtherTable, "table") end
 			local Intersection = {}
 			for Key, Value in next, Table do
 				if OtherTable[Key] == Value then Intersection[Key] = Value end
@@ -1380,7 +1381,7 @@ ProxyMethods = setmetatable({
 		end,
 		
 		Join = function(Table, Delimiter, UseRBXunderscoreToString)
-			if Configurations.AssertArgumentTypes then InternalFunctions.Assert.ExpectType("Methods.Table.Join", Table, "table", Delimiter, "nil, string, number", UseRBXunderscoreToString, "nil, boolean") end
+			if Configurations.AssertArgumentTypes then Assert.ExpectArgumentType("Methods.Table.Join", Table, "table", Delimiter, "nil, string, number", UseRBXunderscoreToString, "nil, boolean") end
 			local String, StringSize, Delimiter = {}, 0, (Delimiter or "") .. ""
 			for __, Value in next, Table do
 				StringSize = StringSize + 1; String[StringSize] = tostring(UseRBXunderscoreToString and _(Value) or Value) .. Delimiter
@@ -1389,7 +1390,7 @@ ProxyMethods = setmetatable({
 		end,
 		
 		LastIndexOf = function(Table, Object, MaximumIndex)
-			if Configurations.AssertArgumentTypes then InternalFunctions.Assert.ExpectType("Methods.Table.LastIndexOf", Table, "table", Object, "anything", MaximumIndex, "nil, integer") end
+			if Configurations.AssertArgumentTypes then Assert.ExpectArgumentType("Methods.Table.LastIndexOf", Table, "table", Object, "anything", MaximumIndex, "nil, integer") end
 			MaximumIndex = MaximumIndex and MaximumIndex < #Table and MaximumIndex or #Table
 			local Keys, Values, PassedMaximumIndex = ProxyMethods.table.Reverse(ProxyMethods.table.GetKeys(Table)), ProxyMethods.table.Reverse(ProxyMethods.table.GetValues(Table))
 			for Index, Value in next, Values do
@@ -1406,7 +1407,7 @@ ProxyMethods = setmetatable({
 		end,
 		
 		Match = function(Table, Type, Object, CaseInsensitive, PartialMatch)
-			if Configurations.AssertArgumentTypes then InternalFunctions.Assert.ExpectType("Methods.Table.Match", Table, "table", Type, "string", Object, "object", CaseInsensitive, "nil, boolean", PartialMatch, "nil, boolean") end
+			if Configurations.AssertArgumentTypes then Assert.ExpectArgumentType("Methods.Table.Match", Table, "table", Type, "string", Object, "object", CaseInsensitive, "nil, boolean", PartialMatch, "nil, boolean") end
 			local TableEquals = ProxyMethods.table.Equals
 			for Key, Value in next, Table do
 				if Type == "Key" then
@@ -1443,7 +1444,7 @@ ProxyMethods = setmetatable({
 		end,
 		
 		MatchPartner = function(Table, Type, Object, CaseInsensitive, PartialMatch)
-			if Configurations.AssertArgumentTypes then InternalFunctions.Assert.ExpectType("Methods.Table.MatchPartner", Table, "table", Type, "string", Object, "object", CaseInsensitive, "nil, boolean", PartialMatch, "nil, boolean") end
+			if Configurations.AssertArgumentTypes then Assert.ExpectArgumentType("Methods.Table.MatchPartner", Table, "table", Type, "string", Object, "object", CaseInsensitive, "nil, boolean", PartialMatch, "nil, boolean") end
 			local TableEquals = ProxyMethods.table.Equals
 			for Key, Value in next, Table do
 				if Type == "Key" then
@@ -1480,7 +1481,7 @@ ProxyMethods = setmetatable({
 		end,
 		
 		Reduce = function(Table, Callback, InitialValue)
-			if Configurations.AssertArgumentTypes then InternalFunctions.Assert.ExpectType("Methods.Table.Reduce", Table, "table", Callback, "function") end
+			if Configurations.AssertArgumentTypes then Assert.ExpectArgumentType("Methods.Table.Reduce", Table, "table", Callback, "function") end
 			local AccumulatedValue = InitialValue or Storage.Constant.EmptyAccumulativeObjects[type(Table[1])]
 			for Index, Value in ipairs(Table) do
 				AccumulatedValue = Callback(AccumulatedValue, Value, Index)
@@ -1489,7 +1490,7 @@ ProxyMethods = setmetatable({
 		end,
 		
 		ReduceRight = function(Table, Callback, InitialValue)
-			if Configurations.AssertArgumentTypes then InternalFunctions.Assert.ExpectType("Methods.Table.ReduceRight", Table, "table", Callback, "function") end
+			if Configurations.AssertArgumentTypes then Assert.ExpectArgumentType("Methods.Table.ReduceRight", Table, "table", Callback, "function") end
 			local AccumulatedValue = InitialValue or Storage.Constant.EmptyAccumulativeObjects[type(Table[#Table])]
 			for Index, Value in ipairs(ProxyMethods.table.Reverse(Table)) do
 				AccumulatedValue = Callback(AccumulatedValue, Value, #Table - Index + 1)
@@ -1498,7 +1499,7 @@ ProxyMethods = setmetatable({
 		end,
 		
 		Repeat = function(Table, Amount)
-			if Configurations.AssertArgumentTypes then InternalFunctions.Assert.ExpectType("Methods.Table.Repeat", Table, "table", Amount, "nil, integer") end
+			if Configurations.AssertArgumentTypes then Assert.ExpectArgumentType("Methods.Table.Repeat", Table, "table", Amount, "nil, integer") end
 			local Repeated, RepeatedSize = {}, 0
 			for Index = 1, Amount or 2 do
 				for Index = 1, #Table do
@@ -1513,7 +1514,7 @@ ProxyMethods = setmetatable({
 		end,
 		
 		Some = function(Table, Callback)
-			if Configurations.AssertArgumentTypes then InternalFunctions.Assert.ExpectType("Methods.Table.Some", Table, "table", Callback, "nil, function") end
+			if Configurations.AssertArgumentTypes then Assert.ExpectArgumentType("Methods.Table.Some", Table, "table", Callback, "nil, function") end
 			Callback = Callback or InternalFunctions.Identity
 			for Key, Value in next, Table do
 				if Callback(Value, Key) then return true end
@@ -1522,7 +1523,7 @@ ProxyMethods = setmetatable({
 		end,
 		
 		ToKeyedChildrenTable = function(Table)
-			if Configurations.AssertArgumentTypes then InternalFunctions.Assert.ExpectType("Methods.Table.ToKeyedChildrenTable", Table, "table") end
+			if Configurations.AssertArgumentTypes then Assert.ExpectArgumentType("Methods.Table.ToKeyedChildrenTable", Table, "table") end
 			local NewTable, NewTableSize = {}, 0
 			for Index, Instance in next, Table do
 				if pcall(function() return Instance.Name end) then
@@ -1535,7 +1536,7 @@ ProxyMethods = setmetatable({
 		end,
 		
 		TraverseAllChildTables = function(Table) --for ChildTable, Pair = {Key = a, Value = b} in TraverseAllChildTables(Table) do
-			if Configurations.AssertArgumentTypes then InternalFunctions.Assert.ExpectType("Methods.Table.TraverseAllChildTables", Table, "table") end
+			if Configurations.AssertArgumentTypes then Assert.ExpectArgumentType("Methods.Table.TraverseAllChildTables", Table, "table") end
 			local AllTables, TableIndexOf = ProxyMethods.table.GetAllChildren(Table, "Table", true), ProxyMethods.table.IndexOf
 			return function(ChildTable, Pair)
 				ChildTable, Pair = ChildTable or Table, Pair or {}
@@ -1557,7 +1558,7 @@ ProxyMethods = setmetatable({
 		end,
 		
 		Union = function(Table, OtherTable)
-			if Configurations.AssertArgumentTypes then InternalFunctions.Assert.ExpectType("Methods.Table.Union", Table, "table", OtherTable, "table") end
+			if Configurations.AssertArgumentTypes then Assert.ExpectArgumentType("Methods.Table.Union", Table, "table", OtherTable, "table") end
 			local Union = ProxyMethods.table.Clone(Table, true)
 			for Key, Value in next, OtherTable do
 				if Union[Key] == nil then Union[Key] = Value end
@@ -1566,7 +1567,7 @@ ProxyMethods = setmetatable({
 		end,
 		
 		Unpack = function(Table, ArrayBegin, ArrayEnd) --Include unpack(table, ...) functionalities
-			if Configurations.AssertArgumentTypes then InternalFunctions.Assert.ExpectType("Methods.Table.Unpack", Table, "table") end
+			if Configurations.AssertArgumentTypes then Assert.ExpectArgumentType("Methods.Table.Unpack", Table, "table") end
 			local Objects, ObjectsSize = {}, 0
 			for __, Value in next, Table do
 				ObjectsSize = ObjectsSize + 1; Objects[ObjectsSize] = Value
@@ -1577,7 +1578,7 @@ ProxyMethods = setmetatable({
 		UnpackArray = unpack, --Herp derp
 		
 		UnpackHash = function(Table) --I dunno why you'd think this would be a good idea
-			if Configurations.AssertArgumentTypes then InternalFunctions.Assert.ExpectType("Methods.Table.UnpackHash", Table, "table") end
+			if Configurations.AssertArgumentTypes then Assert.ExpectArgumentType("Methods.Table.UnpackHash", Table, "table") end
 			local Objects, ObjectsSize, ArrayIndices = {}, 0, {}
 			for Index in ipairs(Table) do ArrayIndices[Index] = true end
 			for Key, Value in next, Table do
@@ -1590,7 +1591,7 @@ ProxyMethods = setmetatable({
 		
 		--Mutative methods
 		Clear = function(Table)
-			if Configurations.AssertArgumentTypes then InternalFunctions.Assert.ExpectType("Methods.Table.Clear", Table, "table") end
+			if Configurations.AssertArgumentTypes then Assert.ExpectArgumentType("Methods.Table.Clear", Table, "table") end
 			local Check = math_random(); Table[1] = Check
 			if Table[1] == Check then
 				for Key in next, Table do
@@ -1606,7 +1607,7 @@ ProxyMethods = setmetatable({
 		end,
 		
 		ClearArray = function(Table)
-			if Configurations.AssertArgumentTypes then InternalFunctions.Assert.ExpectType("Methods.Table.ClearArray", Table, "table") end
+			if Configurations.AssertArgumentTypes then Assert.ExpectArgumentType("Methods.Table.ClearArray", Table, "table") end
 			local Check = math_random(); Table[1] = Check
 			if Table[1] == Check then
 				for Index = 1, #Table do
@@ -1621,7 +1622,7 @@ ProxyMethods = setmetatable({
 		end,
 		
 		ClearHash = function(Table)
-			if Configurations.AssertArgumentTypes then InternalFunctions.Assert.ExpectType("Methods.Table.ClearHash", Table, "table") end
+			if Configurations.AssertArgumentTypes then Assert.ExpectArgumentType("Methods.Table.ClearHash", Table, "table") end
 			local Check = math_random(); Table[next(Table)] = Check
 			if Table[1] == Check then
 				for Index = 1, #Table do
@@ -1636,7 +1637,7 @@ ProxyMethods = setmetatable({
 		end,
 		
 		CopyWithin = function(Table, Target, Begin, End)
-			if Configurations.AssertArgumentTypes then InternalFunctions.Assert.ExpectType("Methods.Table.CopyWithin", Table, "table", Target, "integer", Begin, "nil, integer", End, "nil, integer") end
+			if Configurations.AssertArgumentTypes then Assert.ExpectArgumentType("Methods.Table.CopyWithin", Table, "table", Target, "integer", Begin, "nil, integer", End, "nil, integer") end
 			if Target > #Table then return Table end
 			Target, Begin, End = Target < 0 and #Table + Target or Target, Functions.Utilities.NormalizeIndexRange(#Table, Begin, End)
 			for Index = Begin, End do
@@ -1646,7 +1647,7 @@ ProxyMethods = setmetatable({
 		end,
 		
 		CreateNest = function(Table, Path, Content, ReturnNest)
-			if Configurations.AssertArgumentTypes then InternalFunctions.Assert.ExpectType("Methods.Table.CreateNest", Table, "table", Path, "string", Content, "anything", ReturnNest, "nil, boolean") end
+			if Configurations.AssertArgumentTypes then Assert.ExpectArgumentType("Methods.Table.CreateNest", Table, "table", Path, "string", Content, "anything", ReturnNest, "nil, boolean") end
 			local LastLevel = Table
 			for Level in Path:gmatch("%.-[^%.]+") do
 				local Level, NewLevel = (Level:gsub("^%.", ""))
@@ -1667,7 +1668,7 @@ ProxyMethods = setmetatable({
 		end,
 		
 		Extend = function(Table, OtherTable, NoOverwrite)
-			if Configurations.AssertArgumentTypes then InternalFunctions.Assert.ExpectType("Methods.Table.Extend", Table, "table", OtherTable, "table", NoOverwrite, "nil, boolean") end
+			if Configurations.AssertArgumentTypes then Assert.ExpectArgumentType("Methods.Table.Extend", Table, "table", OtherTable, "table", NoOverwrite, "nil, boolean") end
 			for Key, Value in next, OtherTable do
 				if not NoOverwrite or Table[Key] == nil then Table[Key] = OtherTable[Key] end
 			end
@@ -1675,7 +1676,7 @@ ProxyMethods = setmetatable({
 		end,
 		
 		Fill = function(Table, Object, Begin, End) --Fix this
-			if Configurations.AssertArgumentTypes then InternalFunctions.Assert.ExpectType("Methods.Table.Fill", Table, "table", Object, "anything", Begin, "nil, integer", End, "nil, integer") end
+			if Configurations.AssertArgumentTypes then Assert.ExpectArgumentType("Methods.Table.Fill", Table, "table", Object, "anything", Begin, "nil, integer", End, "nil, integer") end
 			if Begin then
 				Begin, End = Functions.Utilities.NormalizeIndexRange(#Table, Begin, End)
 				for Key in ipairs(Table) do
@@ -1692,7 +1693,7 @@ ProxyMethods = setmetatable({
 		end,
 		
 		Filter = function(Table, Callback, DeepFilter)
-			if Configurations.AssertArgumentTypes then InternalFunctions.Assert.ExpectType("Methods.Table.Filter", Table, "table", Callback, "nil, function", DeepFilter, "nil, boolean") end
+			if Configurations.AssertArgumentTypes then Assert.ExpectArgumentType("Methods.Table.Filter", Table, "table", Callback, "nil, function", DeepFilter, "nil, boolean") end
 			Callback = Callback or InternalFunctions.Identity
 			for Key, Value in next, Table do
 				if type(Value) == "table" and DeepFilter then
@@ -1705,7 +1706,7 @@ ProxyMethods = setmetatable({
 		end,
 		
 		Flatten = function(Table, DeepFlatten, Overwrite) --Currently buggy
-			if Configurations.AssertArgumentTypes then InternalFunctions.Assert.ExpectType("Methods.Table.Flatten", Table, "table", DeepFlatten, "nil, boolean", Overwrite, "nil, boolean") end
+			if Configurations.AssertArgumentTypes then Assert.ExpectArgumentType("Methods.Table.Flatten", Table, "table", DeepFlatten, "nil, boolean", Overwrite, "nil, boolean") end
 			for Key, Value in next, Table do
 				if type(Value) == "table" then
 					for Key, Value in next, ProxyMethods.table.Flatten(Value, Overwrite) do
@@ -1722,18 +1723,18 @@ ProxyMethods = setmetatable({
 		end,
 		
 		Insert = function(Table, ...)
-			if Configurations.AssertArgumentTypes then InternalFunctions.Assert.ExpectType("Methods.Table.Insert", Table, "table") end
+			if Configurations.AssertArgumentTypes then Assert.ExpectArgumentType("Methods.Table.Insert", Table, "table") end
 			table_insert(Table, ...)
 			return Table
 		end,
 		
 		LockMetatable = function(Table, Message)
-			if Configurations.AssertArgumentTypes then InternalFunctions.Assert.ExpectType("Methods.Table.LockMetatable", Table, "table", Message, "nil, string") end
+			if Configurations.AssertArgumentTypes then Assert.ExpectArgumentType("Methods.Table.LockMetatable", Table, "table", Message, "nil, string") end
 			return ProxyMethods.table.SetMetatable(Table, {__metatable = Message or "The metatable is locked"}, true)
 		end,
 		
 		Map = function(Table, Callback, DeepMap)
-			if Configurations.AssertArgumentTypes then InternalFunctions.Assert.ExpectType("Methods.Table.Map", Table, "table", Callback, "function", DeepMap, "nil, boolean") end
+			if Configurations.AssertArgumentTypes then Assert.ExpectArgumentType("Methods.Table.Map", Table, "table", Callback, "function", DeepMap, "nil, boolean") end
 			for Key, Value in next, Table do
 				if type(Value) == "table" and DeepMap then
 					rawset(Table, Key, ProxyMethods.table.Map(Value, Callback, true))
@@ -1747,7 +1748,7 @@ ProxyMethods = setmetatable({
 		Pop = table_remove,
 		
 		Push = function(Table, ...)
-			if Configurations.AssertArgumentTypes then InternalFunctions.Assert.ExpectType("Methods.Table.Push", Table, "table") end
+			if Configurations.AssertArgumentTypes then Assert.ExpectArgumentType("Methods.Table.Push", Table, "table") end
 			local Arguments, TableSize = {...}, #Table
 			for Index = 1, select("#", ...) do
 				TableSize = TableSize + 1; Table[TableSize] = Arguments[Index]
@@ -1756,7 +1757,7 @@ ProxyMethods = setmetatable({
 		end,
 		
 		Remove = function(Table, Key)
-			if Configurations.AssertArgumentTypes then InternalFunctions.Assert.ExpectType("Methods.Table.Remove", Table, "table") end
+			if Configurations.AssertArgumentTypes then Assert.ExpectArgumentType("Methods.Table.Remove", Table, "table") end
 			table_remove(Table, type(Key) == "number" and Key or Key and ProxyMethods.table.IndexOf(Table, Key) or nil)
 			return Table
 		end,
@@ -1766,7 +1767,7 @@ ProxyMethods = setmetatable({
 		end,
 		
 		RemoveIndexGaps = function(Table)
-			if Configurations.AssertArgumentTypes then InternalFunctions.Assert.ExpectType("Methods.Table.RemoveIndexGaps", Table, "table") end
+			if Configurations.AssertArgumentTypes then Assert.ExpectArgumentType("Methods.Table.RemoveIndexGaps", Table, "table") end
 			local MaxIndex, LastUsedIndex = 1, 0
 			for Key in next, Table do
 				if type(Key) == "number" and Key > 0 then
@@ -1782,7 +1783,7 @@ ProxyMethods = setmetatable({
 		end,
 		
 		Reverse = function(Table)
-			if Configurations.AssertArgumentTypes then InternalFunctions.Assert.ExpectType("Methods.Table.Reverse", Table, "table") end
+			if Configurations.AssertArgumentTypes then Assert.ExpectArgumentType("Methods.Table.Reverse", Table, "table") end
 			local Values = ProxyMethods.table.GetValues(Table, true)
 			for Index in ipairs(Table) do
 				Table[Index] = Values[#Values - Index + 1]
@@ -1791,25 +1792,25 @@ ProxyMethods = setmetatable({
 		end,
 		
 		SetMetatable = function(Table, Metatable, ApplyMode)
-			if Configurations.AssertArgumentTypes then InternalFunctions.Assert.ExpectType("Methods.Table.SetMetatable", Table, "table", Metatable, "table", ApplyMode, "nil, boolean") end
+			if Configurations.AssertArgumentTypes then Assert.ExpectArgumentType("Methods.Table.SetMetatable", Table, "table", Metatable, "table", ApplyMode, "nil, boolean") end
 			local CurrentMetatable = getmetatable(Table)
-			InternalFunctions.Assert("Methods.Table.SetMetatable", CurrentMetatable == nil or type(CurrentMetatable) == "table", "The table's metatable is unmodifiable!")
+			Assert("Methods.Table.SetMetatable", CurrentMetatable == nil or type(CurrentMetatable) == "table", "The table's metatable is unmodifiable!")
 			return setmetatable(Table, ApplyMode and ProxyMethods.table.Concatenate(Metatable, CurrentMetatable) or (type(Metatable) == "table" and Metatable or {__metatable = Metatable}))
 		end,
 		
 		Shift = function(Table)
-			if Configurations.AssertArgumentTypes then InternalFunctions.Assert.ExpectType("Methods.Table.Shift", Table, "table") end
+			if Configurations.AssertArgumentTypes then Assert.ExpectArgumentType("Methods.Table.Shift", Table, "table") end
 			return table_remove(Table, 1)
 		end,
 		
 		Sort = function(Table, Callback)
-			if Configurations.AssertArgumentTypes then InternalFunctions.Assert.ExpectType("Methods.Table.Sort", Table, "table", Callback, "nil, function") end
+			if Configurations.AssertArgumentTypes then Assert.ExpectArgumentType("Methods.Table.Sort", Table, "table", Callback, "nil, function") end
 			table_sort(Table, Callback)
 			return Table
 		end,
 		
 		Splice = function(Table, Begin, End)
-			if Configurations.AssertArgumentTypes then InternalFunctions.Assert.ExpectType("Methods.Table.Splice", Table, "table", Begin, "integer", End, "nil, integer") end
+			if Configurations.AssertArgumentTypes then Assert.ExpectArgumentType("Methods.Table.Splice", Table, "table", Begin, "integer", End, "nil, integer") end
 			local RemovedChildren, RemovedChildrenSize, IndicesToRemove, IndicesToRemoveSize, EntriesRemoved, Begin, End = {}, 0, {}, 0, 0, Functions.Utilities.NormalizeIndexRange(#Table, Begin, End)
 			for Index in ipairs(Table) do
 				if Index < Begin or Index > End then
@@ -1825,7 +1826,7 @@ ProxyMethods = setmetatable({
 		end,
 		
 		Unshift = function(Table, ...)
-			if Configurations.AssertArgumentTypes then InternalFunctions.Assert.ExpectType("Methods.Table.Unshift", Table, "table") end
+			if Configurations.AssertArgumentTypes then Assert.ExpectArgumentType("Methods.Table.Unshift", Table, "table") end
 			local Arguments = {...}
 			for Index = 1, #Arguments do
 				table_insert(Table, Index, Arguments[Index])
@@ -1908,7 +1909,7 @@ ProxyMethods = setmetatable({
 		end,
 		
 		ToString = function(Table, Separator, Begin, End)
-			if Configurations.AssertArgumentTypes then InternalFunctions.Assert.ExpectType("Methods.Table.ToString", Table, "table", Separator, "nil, string, number", Begin, "nil, integer", End, "nil, integer") end
+			if Configurations.AssertArgumentTypes then Assert.ExpectArgumentType("Methods.Table.ToString", Table, "table", Separator, "nil, string, number", Begin, "nil, integer", End, "nil, integer") end
 			local String, StringSize = {}, 0
 			for Key, Value in next, Table do
 				if Key == End then
@@ -1924,14 +1925,14 @@ ProxyMethods = setmetatable({
 	
 	["function"] = {
 		BindToEnvironment = function(Function, Table)
-			if Configurations.AssertArgumentTypes then InternalFunctions.Assert.ExpectType("Methods.Function.BindToEnvironment", Function, "function", Table, "table") end
+			if Configurations.AssertArgumentTypes then Assert.ExpectArgumentType("Methods.Function.BindToEnvironment", Function, "function", Table, "table") end
 			local Environment = getfenv(Function)
 			for Key, Value in next, Table do Environment[Key] = Value end
 			return Function
 		end,
 		
 		Chain = function(...)
-			if Configurations.AssertArgumentTypes then InternalFunctions.Assert.ExpectEveryType("Methods.Function.Chain", "function", ...) end
+			if Configurations.AssertArgumentTypes then Assert.ExpectEveryArgumentType("Methods.Function.Chain", "function", ...) end
 			local Arguments = {...}
 			return function(...)
 				local Returned, ReturnedSize = {}, 0
@@ -1943,14 +1944,14 @@ ProxyMethods = setmetatable({
 		end,
 		
 		Delay = function(Function, Timeout)
-			if Configurations.AssertArgumentTypes then InternalFunctions.Assert.ExpectType("Methods.Function.Delay", Function, "function", Timeout, "nil, number") end
+			if Configurations.AssertArgumentTypes then Assert.ExpectArgumentType("Methods.Function.Delay", Function, "function", Timeout, "nil, number") end
 			return delay(Timeout or 0, Function)
 		end,
 		
 		Dump = string_dump,
 		
 		GetDelayedCaller = function(Function, Timeout)
-			if Configurations.AssertArgumentTypes then InternalFunctions.Assert.ExpectType("Methods.Function.GetDelayedCaller", Function, "function", Timeout, "nil, number") end
+			if Configurations.AssertArgumentTypes then Assert.ExpectArgumentType("Methods.Function.GetDelayedCaller", Function, "function", Timeout, "nil, number") end
 			return function(...)
 				local Arguments, ArgumentCount = {...}, select("#", ...)
 				return delay(Timeout or 0, function() return Function(unpack(Arguments, 1, ArgumentCount)) end)
@@ -1958,29 +1959,29 @@ ProxyMethods = setmetatable({
 		end,
 		
 		GetProtectedCaller = function(Function)
-			if Configurations.AssertArgumentTypes then InternalFunctions.Assert.ExpectType("Methods.Function.GetProtectedCaller", Function, "function") end
+			if Configurations.AssertArgumentTypes then Assert.ExpectArgumentType("Methods.Function.GetProtectedCaller", Function, "function") end
 			return function(...)
 				return pcall(Function, ...)
 			end
 		end,
 		
 		IsLuaFunction = function(Function)
-			if Configurations.AssertArgumentTypes then InternalFunctions.Assert.ExpectType("Methods.Function.IsLuaFunction", Function, "function") end
+			if Configurations.AssertArgumentTypes then Assert.ExpectArgumentType("Methods.Function.IsLuaFunction", Function, "function") end
 			return select(2, pcall(string_dump, Function)) == "unable to dump given function"
 		end,
 		
 		ProtectedCall = function(Function, ...)
-			if Configurations.AssertArgumentTypes then InternalFunctions.Assert.ExpectType("Methods.Function.ProtectedCall", Function, "function") end
+			if Configurations.AssertArgumentTypes then Assert.ExpectArgumentType("Methods.Function.ProtectedCall", Function, "function") end
 			return pcall(Function, ...)
 		end,
 		
 		RunAsThread = function(Function, ...) --Returns coroutine
-			if Configurations.AssertArgumentTypes then InternalFunctions.Assert.ExpectType("Methods.Function.RunAsThread", Function, "function") end
+			if Configurations.AssertArgumentTypes then Assert.ExpectArgumentType("Methods.Function.RunAsThread", Function, "function") end
 			return ProxyMethods.thread.ResumeThread(ProxyMethods["function"].ToThread(Function), ...)
 		end,
 		
 		RunWithEnvironment = function(Function, Environment, ...)
-			if Configurations.AssertArgumentTypes then InternalFunctions.Assert.ExpectType("Methods.Function.RunWithEnvironment", Function, "function", Environment, "nil, table") end
+			if Configurations.AssertArgumentTypes then Assert.ExpectArgumentType("Methods.Function.RunWithEnvironment", Function, "function", Environment, "nil, table") end
 			return setfenv(Function, Environment or {})(...)
 		end,
 		
@@ -1992,27 +1993,27 @@ ProxyMethods = setmetatable({
 		
 		--Metamethods
 		ToString = setfenv(function(Function)
-			if Configurations.AssertArgumentTypes then InternalFunctions.Assert.ExpectType("Methods.Function.ToString", Function, "function") end
+			if Configurations.AssertArgumentTypes then Assert.ExpectArgumentType("Methods.Function.ToString", Function, "function") end
 			return (ProxyMethods["function"].IsLuaFunction(Function) and "LuaFunction[" .. NameMap[Function] or "Function[0x" .. tostring(Function):sub(-8)) .. "]" .. ProxyMethods.table.ToString(getfenv(Function)):sub(18)
 		end, {NameMap = Storage.Constant.LuaFunctionNameMap})
 	},
 	
 	thread = {
 		ResumeThread = function(Thread, ...)
-			if Configurations.AssertArgumentTypes then InternalFunctions.Assert.ExpectType("Methods.Thread.ResumeThread", Thread, "thread") end
+			if Configurations.AssertArgumentTypes then Assert.ExpectArgumentType("Methods.Thread.ResumeThread", Thread, "thread") end
 			return coroutine_resume(Thread, ...) and Thread
 		end,
 		
 		GetThreadStatus = coroutine.status,
 		
 		IsRunningThread = function(Thread)
-			if Configurations.AssertArgumentTypes then InternalFunctions.Assert.ExpectType("Methods.Thread.IsRunningThread", Thread, "thread") end
+			if Configurations.AssertArgumentTypes then Assert.ExpectArgumentType("Methods.Thread.IsRunningThread", Thread, "thread") end
 			return coroutine_running() == Thread
 		end,
 		
 		--Metamethods
 		ToString = function(Thread)
-			if Configurations.AssertArgumentTypes then InternalFunctions.Assert.ExpectType("Methods.Thread.ToString", Thread, "thread") end
+			if Configurations.AssertArgumentTypes then Assert.ExpectArgumentType("Methods.Thread.ToString", Thread, "thread") end
 			return "Thread[0x" .. tostring(Thread):sub(-8) .. "]"
 		end
 	},
@@ -2021,34 +2022,34 @@ ProxyMethods = setmetatable({
 		Instance = {
 			Sound = {
 				Play = function(Sound, Asset)
-					if Configurations.AssertArgumentTypes then InternalFunctions.Assert.ExpectType("Methods.Userdata.Instance.Sound.Play", Sound, "Sound", Asset, "nil, asset") end
+					if Configurations.AssertArgumentTypes then Assert.ExpectArgumentType("Methods.Userdata.Instance.Sound.Play", Sound, "Sound", Asset, "nil, asset") end
 					if Asset then Sound.SoundId = Asset end
 					Sound:Play()
 				end,
 				
 				PlayAfter = function(Sound, Assets)
-					if Configurations.AssertArgumentTypes then InternalFunctions.Assert.ExpectType("Methods.Userdata.Instance.Sound.PlayAfter", Sound, "Sound", Assets, "asset, table") end
+					if Configurations.AssertArgumentTypes then Assert.ExpectArgumentType("Methods.Userdata.Instance.Sound.PlayAfter", Sound, "Sound", Assets, "asset, table") end
 					local Connection; Connection = Sound.Ended:connect(type(Assets) == "table" and function()
-						InternalFunctions.Assert("Methods.Userdata.Instance.Sound.PlayAfter", ProxyMethods.table.Every(Assets, ProxyMethods.string.IsContentURL), "At least one of the asset URLs is invalid.")
+						Assert("Methods.Userdata.Instance.Sound.PlayAfter", ProxyMethods.table.Every(Assets, ProxyMethods.string.IsContentURL), "At least one of the asset URLs is invalid.")
 						Sound.SoundId = table_remove(Assets)
 						Sound:Play()
 						if #Assets == 0 then Connection:disconnect() end
 					end or function()
-						InternalFunctions.Assert("Methods.Userdata.Instance.Sound.PlayAfter", InternalFunctions.IsType(Assets, "asset"), "The asset URL \"" .. Assets .. "\" is invalid.")
+						Assert("Methods.Userdata.Instance.Sound.PlayAfter", InternalFunctions.IsType(Assets, "asset"), "The asset URL \"" .. Assets .. "\" is invalid.")
 						Sound.SoundId = type(Assets) == "number" and "rbxassetid://" .. Assets or Assets
 						Sound:Play(); Connection:disconnect()
 					end)
 				end,
 				
 				Preload = function(Sound, WaitForLoad)
-					if Configurations.AssertArgumentTypes then InternalFunctions.Assert.ExpectType("Methods.Userdata.Instance.Sound.Preload", Sound, "Sound", WaitForLoad, "nil, boolean") end
+					if Configurations.AssertArgumentTypes then Assert.ExpectArgumentType("Methods.Userdata.Instance.Sound.Preload", Sound, "Sound", WaitForLoad, "nil, boolean") end
 					Services.ContentProvider[WaitForLoad and "PreloadAsync" or "Preload"](Services.ContentProvider, WaitForLoad and {Sound.SoundId} or Sound.SoundId)
 					return Sound
 				end
 			},
 			
 			CreateNest = function(Instance, Path, ClassName, Content, ReturnNest)
-				if Configurations.AssertArgumentTypes then InternalFunctions.Assert.ExpectType("Methods.Userdata.Instance.CreateNest", Instance, "Instance", Path, "string", ClassName, "string", Content, "anything", ReturnNest, "nil, boolean") end
+				if Configurations.AssertArgumentTypes then Assert.ExpectArgumentType("Methods.Userdata.Instance.CreateNest", Instance, "instance", Path, "string", ClassName, "string", Content, "anything", ReturnNest, "nil, boolean") end
 				local LastLevel, CreateInstance = Instance, Instance.Create
 				for Level in Path:gmatch("%.-[^%.]+") do
 					Level = Level:gsub("^%.", "")
@@ -2065,7 +2066,7 @@ ProxyMethods = setmetatable({
 			end,
 			
 			GetAllChildren = function(Instance, Properties, CaseInsensitive, PartialMatch, MatchAllProperties)
-				if Configurations.AssertArgumentTypes then InternalFunctions.Assert.ExpectType("Methods.Userdata.Instance.GetAllChildren", Instance, "Instance", Properties, "nil, table", CaseInsensitive, "nil, boolean", PartialMatch, "nil, boolean", MatchAllProperties, "nil, boolean") end
+				if Configurations.AssertArgumentTypes then Assert.ExpectArgumentType("Methods.Userdata.Instance.GetAllChildren", Instance, "instance", Properties, "nil, table", CaseInsensitive, "nil, boolean", PartialMatch, "nil, boolean", MatchAllProperties, "nil, boolean") end
 				local Instances, InstancesSize, Children, InstanceGetAllChildren, StringContains, TableMatch, TableGetSize, TableClone, TableIndexOf = {}, 0, Instance:GetChildren(), ProxyMethods.userdata.Instance.GetAllChildren, ProxyMethods.string.Contains, ProxyMethods.table.Match, ProxyMethods.table.GetSize, ProxyMethods.table.Clone, ProxyMethods.table.IndexOf
 				for Index = 1, #Children do
 					local Instance = Children[Index]
@@ -2107,7 +2108,7 @@ ProxyMethods = setmetatable({
 			end,
 			
 			GetAllMembers = function(Instance, Type)
-				if Configurations.AssertArgumentTypes then InternalFunctions.Assert.ExpectType("Methods.Userdata.Instance.GetAllMembers", Instance, "Instance", Type, "nil, string, table") end
+				if Configurations.AssertArgumentTypes then Assert.ExpectArgumentType("Methods.Userdata.Instance.GetAllMembers", Instance, "instance", Type, "nil, string, table") end
 				local Entries, EntriesSize = {}, 0
 				if type(Type) == "table" then
 					local InstanceGetAllMembers = ProxyMethods.userdata.Instance.GetAllMembers
@@ -2172,7 +2173,7 @@ ProxyMethods = setmetatable({
 			end,
 			
 			GetNest = function(Instance, Path)
-				if Configurations.AssertArgumentTypes then InternalFunctions.Assert.ExpectType("Methods.Userdata.Instance.GetNest", Instance, "Instance", Path, "string") end
+				if Configurations.AssertArgumentTypes then Assert.ExpectArgumentType("Methods.Userdata.Instance.GetNest", Instance, "instance", Path, "string") end
 				local LastLevel = Instance
 				for Level in Path:gmatch("%.-[^%.]+") do
 					local Level = Level:gsub("^%.", "")
@@ -2183,18 +2184,18 @@ ProxyMethods = setmetatable({
 			end,
 			
 			HasProperty = function(Instance, Property)
-				if Configurations.AssertArgumentTypes then InternalFunctions.Assert.ExpectType("Methods.Userdata.Instance.HasProperty", Instance, "Instance", Property, "string") end
+				if Configurations.AssertArgumentTypes then Assert.ExpectArgumentType("Methods.Userdata.Instance.HasProperty", Instance, "instance", Property, "string") end
 				return select(2, pcall(function() Instance[Property] = Instance[Property] end)) ~= Property .. " is not a valid member of " .. Instance.ClassName
 			end,
 			
 			IsCreatable = function(Instance)
-				if Configurations.AssertArgumentTypes then InternalFunctions.Assert.ExpectType("Methods.Userdata.Instance.IsCreatable", Instance, "Instance") end
+				if Configurations.AssertArgumentTypes then Assert.ExpectArgumentType("Methods.Userdata.Instance.IsCreatable", Instance, "instance") end
 				return (pcall(NewInstance, Instance.ClassName))
 			end,
 			
 			IsPropertyReadOnly = function(Instance, Property)
-				if Configurations.AssertArgumentTypes then InternalFunctions.Assert.ExpectType("Methods.Userdata.Instance.IsPropertyReadOnly", Instance, "instance", Property, "string") end
-				InternalFunctions.Assert("Methods.Userdata.Instance.IsPropertyReadOnly", ProxyMethods.userdata.Instance.HasProperty(Instance, Property), "\"" .. Property .. "\" is not a valid property of class \"" .. Instance.ClassName .. "\"!")
+				if Configurations.AssertArgumentTypes then Assert.ExpectArgumentType("Methods.Userdata.Instance.IsPropertyReadOnly", Instance, "instance", Property, "string") end
+				Assert("Methods.Userdata.Instance.IsPropertyReadOnly", ProxyMethods.userdata.Instance.HasProperty(Instance, Property), "\"" .. Property .. "\" is not a valid property of class \"" .. Instance.ClassName .. "\"!")
 				if pcall(function() return Instance[Property] end) then
 					if Property ~= "Parent" and pcall(NewInstance, Instance.ClassName) then
 						Instance = NewInstance(Instance.ClassName)
@@ -2205,13 +2206,13 @@ ProxyMethods = setmetatable({
 			end,
 			
 			RemoveAllChildren = function(...)
-				if Configurations.AssertArgumentTypes then InternalFunctions.Assert.ExpectType("Methods.Userdata.Instance.RemoveAllChildren", ({...})[1], "Instance") end
+				if Configurations.AssertArgumentTypes then Assert.ExpectArgumentType("Methods.Userdata.Instance.RemoveAllChildren", ({...})[1], "instance") end
 				ProxyMethods.table.ForEach(ProxyMethods.userdata.Instance.GetAllChildren(...), function(Instance) pcall(game.Destroy, Instance) end)
 			end,
 			
 			Serialize = function(Instance, IncludeChildren, ReturnAsTable)
-				if Configurations.AssertArgumentTypes then InternalFunctions.Assert.ExpectType("Methods.Userdata.Instance.Serialize", Instance, "Instance", IncludeChildren, "nil, boolean", ReturnAsTable, "nil, boolean") end
-				InternalFunctions.Assert("Methods.Userdata.Instance.Serialize", pcall(NewInstance, Instance.ClassName), "The instance \"" .. Instance.Name .. "\" of class \"" .. Instance.ClassName .. "\" is not creatable!")
+				if Configurations.AssertArgumentTypes then Assert.ExpectArgumentType("Methods.Userdata.Instance.Serialize", Instance, "instance", IncludeChildren, "nil, boolean", ReturnAsTable, "nil, boolean") end
+				Assert("Methods.Userdata.Instance.Serialize", pcall(NewInstance, Instance.ClassName), "The instance \"" .. Instance.Name .. "\" of class \"" .. Instance.ClassName .. "\" is not creatable!")
 				Instance.Archivable = true; Instance = Instance:Clone(); if Instance.ClassName == "Model" then Instance:MakeJoints() end --Clone root before serialization to avoid unwanted modifications on original objects
 				local Children = IncludeChildren and Instance:GetChildren() or nil
 				local Properties, Output = ProxyMethods.userdata.Instance.GetAllMembers(Instance, "Properties"), {ClassName = Instance.ClassName, __children = Children} --ClassName won't be serialized because it is read-only
@@ -2223,7 +2224,7 @@ ProxyMethods = setmetatable({
 							local Member = Instance[MemberName]
 							local MemberType = type(Member)
 							if MemberType == "userdata" then
-								if GetUserdataType(Member) == "Instance" then
+								if GetUserdataType(Member) == "instance" then
 									if Member.Parent == Instance and IncludeChildren then
 										Output[MemberName] = "__children[" .. TableIndexOf(Children, Member) .. "]"
 									else
@@ -2253,7 +2254,7 @@ ProxyMethods = setmetatable({
 			end,
 			
 			SetProperties = function(Instance, Properties)
-				if Configurations.AssertArgumentTypes then InternalFunctions.Assert.ExpectType("Methods.Userdata.Instance.SetProperties", Instance, "Instance", Properties, "table") end
+				if Configurations.AssertArgumentTypes then Assert.ExpectArgumentType("Methods.Userdata.Instance.SetProperties", Instance, "instance", Properties, "table") end
 				local IsInstancePropertyReadOnly = ProxyMethods.userdata.Instance.IsPropertyReadOnly
 				for Property, Value in next, Properties do
 					pcall(function() Instance[Property] = Value end)
@@ -2262,11 +2263,11 @@ ProxyMethods = setmetatable({
 			end,
 			
 			Unserialize = function(Input, Parent) --Grouped with instance methods for ease of remembering
-				if Configurations.AssertArgumentTypes then InternalFunctions.Assert.ExpectType("Methods.Userdata.Instance.Unserialize", Input, "string, table", Parent, "nil, Instance") end
+				if Configurations.AssertArgumentTypes then Assert.ExpectArgumentType("Methods.Userdata.Instance.Unserialize", Input, "string, table", Parent, "nil, Instance") end
 				local Decoded = type(Input) == "string" and Services.HttpService:JSONDecode(Input) or type(Input) == "table" and Input or nil
 				local ClassName = Decoded.ClassName; Decoded.ClassName = nil
 				local Instance, Children = NewInstance(ClassName), Decoded.__children
-				local IsInstancePropertyReadOnly, TableGetNest, Parsers, Warn = ProxyMethods.userdata.Instance.IsPropertyReadOnly, ProxyMethods.table.GetNest, Storage.Constant.Userdata.Parsers, Log.Warn
+				local IsInstancePropertyReadOnly, TableGetNest, Decoders, Warn = ProxyMethods.userdata.Instance.IsPropertyReadOnly, ProxyMethods.table.GetNest, Storage.Constant.Userdata.Decoders, Log.Warn
 				if Children then
 					local UnserializeInstance = ProxyMethods.userdata.Instance.Unserialize
 					for Index = 1, #Children do
@@ -2282,7 +2283,7 @@ ProxyMethods = setmetatable({
 						else
 							--if not IsInstancePropertyReadOnly(Instance, MemberName) then
 								if type(Member) == "string" and Member:sub(1, 3) == "__$" then
-									Instance[MemberName] = Parsers[Member:match("%w+")](Member:match("%b[]"):sub(2, -2))
+									Instance[MemberName] = Decoders[Member:match("%w+")](Member:match("%b[]"):sub(2, -2))
 								else
 									Instance[MemberName] = Member
 								end
@@ -2300,7 +2301,7 @@ ProxyMethods = setmetatable({
 			end,
 			
 			WaitForChild = function(Instance, Name, IncludeDescendants)
-				if Configurations.AssertArgumentTypes then InternalFunctions.Assert.ExpectType("Methods.Userdata.Instance.WaitForChild", Instance, "Instance", Name, "string", IncludeDescendants, "nil, boolean") end
+				if Configurations.AssertArgumentTypes then Assert.ExpectArgumentType("Methods.Userdata.Instance.WaitForChild", Instance, "instance", Name, "string", IncludeDescendants, "nil, boolean") end
 				if IncludeDescendants then
 					local Found = Instance:FindFirstChild(Name, true); if Found then return Found end
 					local Connections, ConnectionsSize = {}, 1; local ConnectCallback = function()
@@ -2326,26 +2327,38 @@ ProxyMethods = setmetatable({
 			
 			--Metamethods
 			GetSize = function(Instance, IncludeChildren)
-				if Configurations.AssertArgumentTypes then InternalFunctions.Assert.ExpectType("Methods.Userdata.Instance.GetSize", Instance, "Instance", IncludeChildren, "nil, boolean") end
+				if Configurations.AssertArgumentTypes then Assert.ExpectArgumentType("Methods.Userdata.Instance.GetSize", Instance, "instance", IncludeChildren, "nil, boolean") end
 				return IncludeChildren and #ProxyMethods.userdata.Instance.GetAllChildren(Instance) or #Instance:GetChildren()
 			end
 		},
 		
 		Proxy = {
+			Clone = function(Proxy)
+				if Configurations.AssertArgumentTypes then Assert.ExpectArgumentType("Methods.Userdata.Proxy.Clone", Proxy, "proxy") end
+				local Metatable = getmetatable(Proxy)
+				Assert("Methods.Userdata.Proxy.Clone", type(Metatable) == "table", "The proxy's metatable is a " .. type(Metatable) .. ". It must be a table.")
+				local NewProxy = newproxy(true); local NewMetatable = getmetatable(NewProxy)
+				for Key, Value in next, Metatable do
+					NewMetatable[Key] = Value
+				end
+				return NewProxy
+			end,
+			
 			SetMetatable = function(Proxy, Metatable)
+				if Configurations.AssertArgumentTypes then Assert.ExpectArgumentType("Methods.Userdata.Proxy.SetMetatable", Proxy, "proxy", Metatable, "table") end
 				local CurrentMetatable = getmetatable(Proxy)
-				InternalFunctions.Assert("Methods.Userdata.Proxy.SetMetatable", type(Metatable) == "table", "Argument 1 must be a table!", type(CurrentMetatable) == "table", "The proxy's metatable is a " .. type(CurrentMetatable) .. "!")
+				Assert("Methods.Userdata.Proxy.SetMetatable", type(CurrentMetatable) == "table", "The proxy's metatable is a " .. type(CurrentMetatable) .. ". It must be a table.")
 				for Key, Value in next, Metatable do
 					CurrentMetatable[Key] = Value
 				end
 				return Proxy
-			end,
+			end
 		},
 		
-		GetNest = function(...) return ProxyMethods.table.GetNest(...) end, --Attempt to get nest as if object is a table
+		GetNest = function(...) return ProxyMethods.table.GetNest(...) end,
 		
 		GetUserdataType = function(Userdata)
-			if Configurations.AssertArgumentTypes then InternalFunctions.Assert.ExpectType("Methods.Userdata.GetUserdataType", Userdata, "userdata") end
+			if Configurations.AssertArgumentTypes then Assert.ExpectArgumentType("Methods.Userdata.GetUserdataType", Userdata, "userdata") end
 			for UserdataType, Test in next, Storage.Constant.Userdata.TypeTests do
 				if pcall(Test, Userdata) then
 					return UserdataType
@@ -2361,7 +2374,7 @@ ProxyMethods = setmetatable({
 		--Metamethods
 		ToString = function(Userdata)
 			local UserdataString, UserdataType = tostring(Userdata), ProxyMethods.userdata.GetUserdataType(Userdata)
-			local OutputString = Storage.Constant.Userdata.Stringifiers[UserdataType](Userdata)
+			local OutputString = Storage.Constant.Userdata.Encoders[UserdataType](Userdata)
 			return (UserdataType == "Instance" and Userdata == game:FindService(pcall(function() return Userdata.ClassName end) and #Userdata.ClassName > 0 and Userdata.ClassName or pcall(game.FindService, game, UserdataString) and UserdataString or "nil") and "Service" or UserdataType) .. (#OutputString > 0 and "[" .. OutputString .. "]" or "")
 		end
 	}
@@ -2409,8 +2422,8 @@ Storage.Constant = ProxyMethods.table.DisableWriting(Storage.Constant, true) --D
 Storage.Persistent = ProxyMethods.table.DisableRewriting(Storage.Persistent, true) --Disable rewriting to persistent storage
 Storage = ProxyMethods.table.DisableWriting(Storage) --Disable writing to storage root
 
---Disable writing to library components
-Functions, ProxyMethods, Services, Libraries, Log, Capabilities = unpack(ProxyMethods.table.Map({Functions, ProxyMethods, Services, Libraries, Log, Capabilities}, function(Table) return ProxyMethods.table.DisableWriting(Table, true) end))
+--Disable writing to exposed library components
+Functions, ProxyMethods, Services, Libraries, Capabilities = unpack(ProxyMethods.table.Map({Functions, ProxyMethods, Services, Libraries, Capabilities}, function(Table) return ProxyMethods.table.DisableWriting(Table, true) end))
 
 --Set the library/object wrapper entry point
 _ = Functions.Create.Proxy({
@@ -2497,7 +2510,7 @@ _ = Functions.Create.Proxy({
 		Configurations = setmetatable({}, {
 			__index = setmetatable({
 				Reset = function(Key)
-					InternalFunctions.Assert.ExpectType("Configurations.Reset", Key, "nil, string")
+					Assert.ExpectArgumentType("Configurations.Reset", Key, "nil, string")
 					if Key then
 						Configurations[Key] = Storage.Constant.DefaultConfigurations[Key]
 					else
@@ -2507,13 +2520,13 @@ _ = Functions.Create.Proxy({
 				end
 			}, {
 				__index = function(__, Key)
-					InternalFunctions.Assert.ExpectType("Configurations.Get", Key, "string")
+					Assert.ExpectArgumentType("Configurations.Get", Key, "string")
 					return Configurations[Key]
 				end
 				
 			}),
 			__newindex = function(__, Key, Value)
-				InternalFunctions.Assert.ExpectType("Configurations.Set", Key, "string")
+				Assert.ExpectArgumentType("Configurations.Set", Key, "string")
 				Configurations[Key] = Value
 			end,
 			__metatable = "The metatable is locked"
