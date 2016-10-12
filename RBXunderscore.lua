@@ -51,7 +51,7 @@ for __, Instance in next, game:GetChildren() do --Cache services already under t
 	pcall(function() return Services[tostring(Instance)] or Services[Instance.ClassName] end)
 end
 
---Main entry point and tables of functions; declared for use later
+--Predeclare references
 local _, Functions, InternalFunctions, Assert, Log, ProxyMethods
 
 --Storage and environmental capabilities
@@ -556,7 +556,7 @@ InternalFunctions = {
 			return type(tonumber(Object)) == "number"
 		elseif Type == "userdata" then
 			local UserdataType, UserdataString = ProxyMethods.userdata.GetUserdataType(Object), tostring(Object)
-			return UserdataType == "Instance" and (_LowerType == "instance" or _LowerType == "service" and Object == game:FindService(pcall(function() return Object.ClassName end) and #Object.ClassName > 0 and Object.ClassName or pcall(game.FindService, game, UserdataString) and UserdataString or "nil") or Object:IsA(_Type)) or _LowerType == UserdataType:lower()
+			return UserdataType == "Instance" and (_LowerType == "service" and Object == game:FindService(pcall(function() return Object.ClassName end) and #Object.ClassName > 0 and Object.ClassName or pcall(game.FindService, game, UserdataString) and UserdataString or "nil") or Object:IsA(_Type)) or _LowerType == UserdataType:lower()
 		elseif Type == "number" then
 			local IsInteger = Object % 1 == 0
 			return _LowerType == "integer" and IsInteger or (_LowerType == "float" or _LowerType == "double") and not IsInteger or (_LowerType == "content" or _LowerType == "contentid" or _LowerType == "asset" or _LowerType == "assetid") and ProxyMethods.number.IsContentID(Object)
@@ -2336,7 +2336,7 @@ ProxyMethods = setmetatable({
 			Clone = function(Proxy)
 				if Configurations.AssertArgumentTypes then Assert.ExpectArgumentType("Methods.Userdata.Proxy.Clone", Proxy, "proxy") end
 				local Metatable = getmetatable(Proxy)
-				Assert("Methods.Userdata.Proxy.Clone", type(Metatable) == "table", "The proxy's metatable is a " .. type(Metatable) .. ". It must be a table.")
+				Assert("Methods.Userdata.Proxy.Clone", type(Metatable) == "table", "The proxy's metatable is a " .. type(Metatable) .. ". It must be a table!")
 				local NewProxy = newproxy(true); local NewMetatable = getmetatable(NewProxy)
 				for Key, Value in next, Metatable do
 					NewMetatable[Key] = Value
@@ -2347,7 +2347,7 @@ ProxyMethods = setmetatable({
 			SetMetatable = function(Proxy, Metatable)
 				if Configurations.AssertArgumentTypes then Assert.ExpectArgumentType("Methods.Userdata.Proxy.SetMetatable", Proxy, "proxy", Metatable, "table") end
 				local CurrentMetatable = getmetatable(Proxy)
-				Assert("Methods.Userdata.Proxy.SetMetatable", type(CurrentMetatable) == "table", "The proxy's metatable is a " .. type(CurrentMetatable) .. ". It must be a table.")
+				Assert("Methods.Userdata.Proxy.SetMetatable", type(CurrentMetatable) == "table", "The proxy's metatable is a " .. type(CurrentMetatable) .. ". It must be a table!")
 				for Key, Value in next, Metatable do
 					CurrentMetatable[Key] = Value
 				end
@@ -2357,26 +2357,24 @@ ProxyMethods = setmetatable({
 		
 		GetNest = function(...) return ProxyMethods.table.GetNest(...) end,
 		
-		GetUserdataType = function(Userdata)
+		GetUserdataType = setfenv(function(Userdata)
 			if Configurations.AssertArgumentTypes then Assert.ExpectArgumentType("Methods.Userdata.GetUserdataType", Userdata, "userdata") end
-			for UserdataType, Test in next, Storage.Constant.Userdata.TypeTests do
-				if pcall(Test, Userdata) then
-					return UserdataType
-				end
+			for UserdataType, Test in next, UserdataTypeTests do
+				if pcall(Test, Userdata) then return UserdataType end
 			end
 			return "Proxy" --Assume all unknown userdata to be proxies created using newproxy
-		end,
+		end, {UserdataTypeTests = Storage.Constant.Userdata.TypeTests}),
 		
 		IsROBLOXUserdata = function(Userdata)
 			return getmetatable(Userdata) == "The metatable is locked" and not InternalFunctions.IsWrappedObject(Object)
 		end,
 		
 		--Metamethods
-		ToString = function(Userdata)
+		ToString = setfenv(function(Userdata)
 			local UserdataString, UserdataType = tostring(Userdata), ProxyMethods.userdata.GetUserdataType(Userdata)
-			local OutputString = Storage.Constant.Userdata.Encoders[UserdataType](Userdata)
+			local OutputString = UserdataEncoders[UserdataType](Userdata)
 			return (UserdataType == "Instance" and Userdata == game:FindService(pcall(function() return Userdata.ClassName end) and #Userdata.ClassName > 0 and Userdata.ClassName or pcall(game.FindService, game, UserdataString) and UserdataString or "nil") and "Service" or UserdataType) .. (#OutputString > 0 and "[" .. OutputString .. "]" or "")
-		end
+		end, {UserdataEncoders = Storage.Constant.Userdata.Encoders})
 	}
 }, {__index = function(Self, Key) return rawget(Self, Key:lower()) end})
 setmetatable(Functions, {__index = ProxyMethods})
