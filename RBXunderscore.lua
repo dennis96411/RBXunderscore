@@ -1,27 +1,30 @@
 --[[
-	RBXunderscore Library/Object Wrapper by dennis96411 (Updated 10/09/2016 20:00 EST)
+	RBXunderscore Library/Object Wrapper by dennis96411 (Updated 10/13/2016 20:25 EST)
 	Optimizations considered:
 	* http://www.lua.org/gems/sample.pdf
-	* https://stackoverflow.com/questions/154672/what-can-i-do-to-increase-the-performance-of-a-lua-program/12865406#12865406
+	* https://stackoverflow.com/questions/154672/what-can-i-do-to-increase-the-performance-of-a-lua-program/#12865406
 	* https://springrts.com/wiki/Lua_Performance
 	* http://forums.civfanatics.com/showpost.php?p=11547731
 ]]
 
 --Configurations
 local Configurations = {
-	AssertArgumentTypes = false, --Assert correct argument types; disable for less overhead but errors will be less verbose
-	ContinueOnError = false, --Continue on non-fatal protected function call failures
-	PerformTableOperationsInPlace = false --Directly modify wrapped tables' original objects
+	AssertArgumentTypes = false,	--Assert correct argument types; disable for less overhead but errors will be less verbose
+	ContinueOnError = false,		--Continue on non-fatal protected function call errors
+	DirectlyModifyTables = false	--Directly modify wrapped tables' original object
 }
+
+--Predeclare references
+local _, Functions, InternalFunctions, Assert, Log, ProxyMethods
 
 --Localize frequently-used global objects to avoid global environment table lookup
 local
 	--Global instances and objects
 	script, game, Workspace, Enum,
 	--ROBLOX userdata...
-	Axes, BrickColor, CFrame, Color3, ColorSequence, ColorSequenceKeypoint, Faces, Instance, NumberRange, NumberSequence, NumberSequenceKeypoint, PhysicalProperties, Ray, Rect, Region3, Region3int16, UDim, UDim2, Vector2, Vector2int16, Vector3, Vector3int16,
+	Axes, BrickColor, CellId, CFrame, Color3, ColorSequence, ColorSequenceKeypoint, Faces, Instance, NumberRange, NumberSequence, NumberSequenceKeypoint, PhysicalProperties, Ray, Rect, Region3, Region3int16, UDim, UDim2, Vector2, Vector2int16, Vector3, Vector3int16,
 	--... and their constructors
-	NewAxes, NewBrickColor, NewCFrame, NewColor3, NewColorSequence, NewColorSequenceKeypoint, NewFaces, NewInstance, NewNumberRange, NewNumberSequence, NewNumberSequenceKeypoint, NewPhysicalProperties, NewRay, NewRect, NewRegion3, NewRegion3int16, NewUDim, NewUDim2, NewVector2, NewVector2int16, NewVector3, NewVector3int16,
+	NewAxes, NewBrickColor, NewCellId, NewCFrame, NewColor3, NewColorSequence, NewColorSequenceKeypoint, NewFaces, NewInstance, NewNumberRange, NewNumberSequence, NewNumberSequenceKeypoint, NewPhysicalProperties, NewRay, NewRect, NewRegion3, NewRegion3int16, NewUDim, NewUDim2, NewVector2, NewVector2int16, NewVector3, NewVector3int16,
 	--Math functions
 	math_abs, math_atan, math_atan2, math_ceil, math_floor, math_huge, math_log, math_log10, math_max, math_min, math_pi, math_random,
 	--Table functions
@@ -32,7 +35,16 @@ local
 	assert, debug_traceback, delay, error, getfenv, getmetatable, ipairs, LoadLibrary, loadstring, newproxy, next, pairs, pcall, print, rawget, rawset, select, setfenv, setmetatable, spawn, string_dump, tick, tonumber, tostring, type, unpack, wait, warn, noop, --Empty function body
 	NOPE --Replacement for error in protected calls; avoids global environment table lookup and function call
 		=
-	script, game, Workspace, Enum, Axes, BrickColor, CFrame, Color3, ColorSequence, ColorSequenceKeypoint, Faces, Instance, NumberRange, NumberSequence, NumberSequenceKeypoint, PhysicalProperties, Ray, Rect, Region3, Region3int16, UDim, UDim2, Vector2, Vector2int16, Vector3, Vector3int16, Axes.new, BrickColor.new, CFrame.new, Color3.new, ColorSequence.new, ColorSequenceKeypoint.new, Faces.new, Instance.new, NumberRange.new, NumberSequence.new, NumberSequenceKeypoint.new, PhysicalProperties.new,  Ray.new, Rect.new, Region3.new, Region3int16.new, UDim.new, UDim2.new, Vector2.new, Vector2int16.new, Vector3.new, Vector3int16.new, math.abs, math.atan, math.atan2, math.ceil, math.floor, math.huge, math.log, math.log10, math.max, math.min, math.pi, math.random, table.concat, table.insert, table.remove, table.sort, coroutine.resume, coroutine.running, coroutine.wrap, coroutine.yield, assert, debug.traceback, delay, error, getfenv, getmetatable, ipairs, LoadLibrary, loadstring, newproxy, next, pairs, pcall, print, rawget, rawset, select, setfenv, setmetatable, spawn, string.dump, tick, tonumber, tostring, type, unpack, wait, warn, function() end
+	script, game, Workspace, Enum, Axes, BrickColor, CellId, CFrame, Color3, ColorSequence, ColorSequenceKeypoint, Faces, Instance, NumberRange, NumberSequence, NumberSequenceKeypoint, PhysicalProperties, Ray, Rect, Region3, Region3int16, UDim, UDim2, Vector2, Vector2int16, Vector3, Vector3int16, Axes.new, BrickColor.new, CellId.new, CFrame.new, Color3.new, ColorSequence.new, ColorSequenceKeypoint.new, Faces.new, Instance.new, NumberRange.new, NumberSequence.new, NumberSequenceKeypoint.new, PhysicalProperties.new,  Ray.new, Rect.new, Region3.new, Region3int16.new, UDim.new, UDim2.new, Vector2.new, Vector2int16.new, Vector3.new, Vector3int16.new, math.abs, math.atan, math.atan2, math.ceil, math.floor, math.huge, math.log, math.log10, math.max, math.min, math.pi, math.random, table.concat, table.insert, table.remove, table.sort, coroutine.resume, coroutine.running, coroutine.wrap, coroutine.yield, assert, debug.traceback, delay, error, getfenv, getmetatable, ipairs, LoadLibrary, loadstring, newproxy, next, pairs, pcall, print, rawget, rawset, select, setfenv, setmetatable, spawn, string.dump, tick, tonumber, tostring, type, unpack, wait, warn, function() end
+
+--Helper functions for minimizing unnecessary closure generation during protected calls
+local ProtectedCallHelpers = {
+	Get = function(Object, Key) return Object[Key] end,
+	Set = function(Object, Key, Value) Object[Key] = Value end,
+	SetSelf = function(Object, Key) Object[Key] = Object[Key] end,
+	Call = function(Object, Name, ...) Object[Name](...) end,
+	CallMethod = function(Object, Name, ...) Object[Name](Object, ...) end
+}
 
 --Services and libraries (cached aliases of game.GetService and LoadLibrary)
 local Services, Libraries = setmetatable({}, {
@@ -50,9 +62,6 @@ local Services, Libraries = setmetatable({}, {
 for __, Instance in next, game:GetChildren() do --Cache services already under the data model
 	pcall(function() return Services[tostring(Instance)] or Services[Instance.ClassName] end)
 end
-
---Predeclare references
-local _, Functions, InternalFunctions, Assert, Log, ProxyMethods
 
 --Storage and environmental capabilities
 local Storage, Capabilities = {
@@ -78,6 +87,7 @@ local Storage, Capabilities = {
 			ROBLOXUserdata = {
 				Axes = NewAxes(),
 				BrickColor = NewBrickColor(),
+				CellId = NewCellId(),
 				CFrame = NewCFrame(),
 				Color3 = NewColor3(),
 				ColorSequence = NewColorSequence(NewColor3()),
@@ -130,7 +140,7 @@ local Storage, Capabilities = {
 			--Coroutine functions
 			[coroutine.create] = "coroutine.create", [coroutine.resume] = "coroutine.resume", [coroutine.running] = "coroutine.running", [coroutine.status] = "coroutine.status", [coroutine.wrap] = "coroutine.wrap", [coroutine.yield] = "coroutine.yield",
 			--Basic functions
-			[assert] = "assert", [collectgarbage] = "collectgarbage", [debug.traceback] = "debug.traceback", [dofile] = "dofile", [error] = "error", [gcinfo] = "gcinfo", [getfenv] = "getfenv", [getmetatable] = "getmetatable", [ipairs] = "ipairs", [load] = "load", [loadfile] = "loadfile", [loadstring] = "loadstring", [newproxy] = "newproxy", [next] = "next", [os.difftime] = "os.difftime", [os.time] = "os.time", [pairs] = "pairs", [pcall] = "pcall", [print] = "print", [rawequal] = "rawequal", [rawget] = "rawget", [rawset] = "rawset", [select] = "select", [setfenv] = "setfenv", [setmetatable] = "setmetatable", [tonumber] = "tonumber", [tostring] = "tostring", [type] = "type", [unpack] = "unpack", [xpcall] = "xpcall",
+			[assert] = "assert", [collectgarbage] = "collectgarbage", [debug.traceback] = "debug.traceback", [debug.profilebegin] = "debug.profilebegin", [debug.profileend] = "debug.profileend", [dofile] = "dofile", [error] = "error", [gcinfo] = "gcinfo", [getfenv] = "getfenv", [getmetatable] = "getmetatable", [ipairs] = "ipairs", [load] = "load", [loadfile] = "loadfile", [loadstring] = "loadstring", [newproxy] = "newproxy", [next] = "next", [os.difftime] = "os.difftime", [os.time] = "os.time", [pairs] = "pairs", [pcall] = "pcall", [print] = "print", [rawequal] = "rawequal", [rawget] = "rawget", [rawset] = "rawset", [select] = "select", [setfenv] = "setfenv", [setmetatable] = "setmetatable", [tonumber] = "tonumber", [tostring] = "tostring", [type] = "type", [unpack] = "unpack", [xpcall] = "xpcall",
 			--ROBLOX-specific functions
 			[Delay] = "Delay", [delay] = "Delay", [ElapsedTime] = "ElapsedTime", [elapsedTime] = "elapsedTime", [LoadLibrary] = "LoadLibrary", [PluginManager] = "PluginManager", [printidentity] = "printidentity", [require] = "require", [settings] = "settings", [Spawn] = "Spawn", [spawn] = "spawn", [Stats] = "stats", [stats] = "stats", [tick] = "tick", [time] = "time", [UserSettings] = "UserSettings", [Version] = "Version", [version] = "version", [Wait] = "Wait", [wait] = "wait", [warn] = "warn", [ypcall] = "ypcall"
 		}, {
@@ -144,21 +154,21 @@ local Storage, Capabilities = {
 			TypeTests = {
 				Axes = setfenv(function(Object) Dummy.Axes = Object end, {Dummy = NewInstance("ArcHandles")}),
 				BrickColor = setfenv(function(Object) Dummy.Value = Object end, {Dummy = NewInstance("BrickColorValue")}),
+				CellId = function(Object) return Object.IsNil and Object.Location and Object.TerrainPart end,
 				CFrame = setfenv(function(Object) Dummy.Value = Object end, {Dummy = NewInstance("CFrameValue")}),
 				Color3 = function(Object) NewBrickColor(Object) end,
 				ColorSequence = setfenv(function(Object) Dummy.Color = Object end, {Dummy = NewInstance("ParticleEmitter")}),
 				ColorSequenceKeypoint = function(Object) if Object ~= NewColorSequenceKeypoint(Object.Time, Object.Value) then NOPE() end end,
-				Connection = setfenv(function(Object) local _Helper = Helper; Object.disconnect(_Helper); if _Helper.connected then NOPE() end; Helper = game.AncestryChanged:connect(noop) end, {Helper = game.AncestryChanged:connect(noop)}),
-				--Connection = function(Object) local Helper = game.AncestryChanged:connect(tick); Object.disconnect(Helper); if Helper.connected ~= false then NOPE() end end,
+				Connection = function(Object) local Helper = game.AncestryChanged:connect(noop); Object.disconnect(Helper); if Helper.connected then NOPE() else Helper:disconnect() end end,
 				EnumerationRoot = function(Object) if Object ~= Enum then NOPE() end end,
 				Enumeration = function(Object) if Object ~= Enum[tostring(Object)] then NOPE() end end,
 				EnumerationItem = function(Object) if Object ~= Enum[tostring(Object):sub(6, -#Object.Name - 2)][Object.Name] then NOPE() end end,
 				Event = setfenv(function(Object) Connector(Object, noop):disconnect() end, {Connector = game.AncestryChanged.connect}),
 				Faces = setfenv(function(Object) Dummy.Faces = Object end, {Dummy = NewInstance("Handles")}),
-				Instance = function(Object) if not pcall(game.IsA, Object, "Instance") and Object ~= game:FindService(pcall(function() return Object.ClassName end) and #Object.ClassName > 0 and Object.ClassName or tostring(Object)) then NOPE() end end, --Handles odd services such as CSGDictionaryService
+				Instance = function(Object) if not pcall(game.IsA, Object, "Instance") and Object ~= game:FindService(pcall(ProtectedCallHelpers.Get, Object, "ClassName") and #Object.ClassName > 0 and Object.ClassName or tostring(Object)) then NOPE() end end, --Handles odd services such as CSGDictionaryService
 				NumberRange = setfenv(function(Object) Dummy.Speed = Object end, {Dummy = NewInstance("ParticleEmitter")}),
 				NumberSequence = setfenv(function(Object) Dummy.Transparency = Object end, {Dummy = NewInstance("ParticleEmitter")}),
-				NumberSequenceKeypoint = function(Object) if tostring(select(2, pcall(function() return NewNumberSequence({Object}) end))) == "NumberSequence ctor: expected 'NumberSequenceKeypoint' at index 1" then NOPE() end end,
+				NumberSequenceKeypoint = function(Object) if select(2, pcall(NewNumberSequence, {Object})) == "NumberSequence ctor: expected 'NumberSequenceKeypoint' at index 1" then NOPE() end end,
 				PhysicalProperties = setfenv(function(Object) Dummy.CustomPhysicalProperties = Object end, {Dummy = NewInstance("Part")}),
 				Ray = setfenv(function(Object) Dummy.Value = Object end, {Dummy = NewInstance("RayValue")}),
 				Rect = setfenv(function(Object) Dummy.SliceCenter = Object end, {Dummy = NewInstance("ImageLabel")}),
@@ -173,6 +183,7 @@ local Storage, Capabilities = {
 			},
 			
 			Encoders = setmetatable({
+				CellId = function(CellId) local Location = CellId.Location; return (CellId.IsNil and "true" or "false") .. "; " .. Location.X .. ", " .. Location.Y .. ", " .. Location.Z .. "; " .. tostring(CellId.TerrainPart) end,
 				ColorSequence = function(ColorSequence)
 					local String, StringSize, Keypoints = {}, 0, ColorSequence.Keypoints
 					for Index = 1, #Keypoints do
@@ -186,7 +197,7 @@ local Storage, Capabilities = {
 				EnumerationItem = function(EnumerationItem) return tostring(EnumerationItem):sub(6) end,
 				Event = function(Event) return tostring(Event):sub(8) end,
 				Instance = function(Instance)
-					if pcall(function() return Instance.Name end) then
+					if pcall(ProtectedCallHelpers.Get, Instance, "Name") then
 						local Name, ClassName = Instance.Name, Instance.ClassName
 						return Name .. (Name ~= ClassName and " <" .. ClassName .. ">" or "")
 					end
@@ -203,7 +214,7 @@ local Storage, Capabilities = {
 				end,
 				NumberSequenceKeypoint = function(NumberSequenceKeypoints) return NumberSequenceKeypoints.Time .. ", " .. NumberSequenceKeypoints.Value .. ", " .. NumberSequenceKeypoints.Envelope end,
 				Ray = function(Ray) return tostring(Ray.Origin) .. "; " .. tostring(Ray.Direction) end,
-				UDim2 = function(UDim2) return tostring(UDim2.X) .. "; " .. tostring(UDim2.Y) end,
+				UDim2 = function(UDim2) return UDim2.X.Scale .. ", " .. UDim2.X.Offset .. "; " .. UDim2.Y.Scale .. ", " .. UDim2.Y.Offset end,
 				Fallback = function(Userdata) local UserdataString = tostring(Userdata); return UserdataString:find("^%w+: %w+$") and "0x" .. UserdataString:sub(-8) or Userdata ~= Enum and UserdataString or "" end
 			}, {__index = function(Self) return Self.Fallback end}),
 			
@@ -269,11 +280,11 @@ local Storage, Capabilities = {
 			NaN = math_abs(0 / 0)
 		}
 	},
-	Persistent = {Instance = {}},
+	Persistent = {Instance = {PropertyWritabilityMap = {ClassName = {Property = true}}}},
 	Temporary = {}
 }, setmetatable({}, {__index = {
 	CanUseLoadstring = pcall(loadstring, ""),
-	CanAccessScriptSource = pcall(function() return script.Source end),
+	CanAccessScriptSource = pcall(ProtectedCallHelpers.Get, script, "Source"),
 	IsFilteringEnabled = Workspace.FilteringEnabled
 }})
 
@@ -401,7 +412,7 @@ Functions = {
 		ModifyZIndex = function(Parent, Level, HardSet)
 			if Configurations.AssertArgumentTypes then Assert.ExpectArgumentType("Functions.GUI.ModifyZIndex", Parent, "instance", Level, "integer", HardSet, "nil, boolean") end
 			local Children, ZIndex = ProxyMethods.userdata.Instance.GetAllChildren(Parent), HardSet and Level or Parent.ZIndex + Level
-			pcall(function() Parent.ZIndex = ZIndex end)
+			pcall(ProtectedCallHelpers.Set, Parent, "ZIndex", ZIndex)
 			for Index = 1, #Children do
 				local Child = Children[Index]
 				if Child:IsA("GuiObject") then
@@ -534,7 +545,7 @@ InternalFunctions = {
 		local Type = type(Object)
 		if Type == "userdata" then
 			local UserdataProxyMethods = ProxyMethods.userdata
-			local Methods, SubType = UserdataProxyMethods[UserdataProxyMethods.GetUserdataType(Object)], pcall(function() return Object.ClassName end) and Object.ClassName or tostring(Object)
+			local Methods, SubType = UserdataProxyMethods[UserdataProxyMethods.GetUserdataType(Object)], pcall(ProtectedCallHelpers.Get, Object, "ClassName") and Object.ClassName or tostring(Object)
 			return Methods and (Methods[SubType] and Methods[SubType][Method] or Methods[Method]) or UserdataProxyMethods[Method]
 		else
 			return ProxyMethods[Type][Method]
@@ -556,7 +567,7 @@ InternalFunctions = {
 			return type(tonumber(Object)) == "number"
 		elseif Type == "userdata" then
 			local UserdataType, UserdataString = ProxyMethods.userdata.GetUserdataType(Object), tostring(Object)
-			return UserdataType == "Instance" and (_LowerType == "service" and Object == game:FindService(pcall(function() return Object.ClassName end) and #Object.ClassName > 0 and Object.ClassName or pcall(game.FindService, game, UserdataString) and UserdataString or "nil") or Object:IsA(_Type)) or _LowerType == UserdataType:lower()
+			return UserdataType == "Instance" and (_LowerType == "service" and Object == game:FindService(pcall(ProtectedCallHelpers.Get, Object, "ClassName") and #Object.ClassName > 0 and Object.ClassName or pcall(game.FindService, game, UserdataString) and UserdataString or "nil") or Object:IsA(_Type)) or _LowerType == UserdataType:lower()
 		elseif Type == "number" then
 			local IsInteger = Object % 1 == 0
 			return _LowerType == "integer" and IsInteger or (_LowerType == "float" or _LowerType == "double") and not IsInteger or (_LowerType == "content" or _LowerType == "contentid" or _LowerType == "asset" or _LowerType == "assetid") and ProxyMethods.number.IsContentID(Object)
@@ -570,9 +581,9 @@ InternalFunctions = {
 		return false
 	end,
 	
-	IsWrappedObject = function(Object)
-		return type(Object) == "userdata" and pcall(function() return Object.__self and Object.__type end)
-	end,
+	IsWrappedObject = setfenv(function(Object)
+		return type(Object) == "userdata" and pcall(Check, Object)
+	end, {Check = function(Object) return Object.__self and Object.__type end}),
 	
 	Identity = function(...) return ... end,
 	
@@ -604,7 +615,7 @@ Assert = setmetatable({
 	ExpectArgumentType = function(Section, ...) --ActualType (object), ExpectedType (string list separated by comma)...
 		local Arguments, IsType = {...}, InternalFunctions.IsType
 		for Index = 1, select("#", ...), 2 do
-			local Argument, ArgumentIndex = Arguments[Index], (Index + 1) / 2 - ((Index + 1) / 2) % 1
+			local Argument, ArgumentIndex = Arguments[Index], (Index + 1) * 0.5 - ((Index + 1) * 0.5) % 1
 			local ActualType, ExpectedType, IsWrongType = type(Argument), Arguments[Index + 1], true
 			if ExpectedType:find(",") then
 				for ExpectedType in ExpectedType:gmatch("%w+") do
@@ -743,11 +754,11 @@ ProxyMethods = setmetatable({
 			return not String:find("%S")
 		end,
 		
-		IsContentURL = function(String, Timeout)
+		IsContentURL = setfenv(function(String, Timeout)
 			if Configurations.AssertArgumentTypes then Assert.ExpectArgumentType("Methods.String.IsContentURL", String, "string", Timeout, "nil, number") end
 			String = type(tonumber(String)) == "number" and "rbxassetid://" .. String or String:lower()
 			local ContentProvider, Timeout, IsInvalid, Connection = Services.ContentProvider, tick() + (String:sub(1, 9) == "rbxasset:" and 0.02 or Timeout or 5)
-			Connection = Services.LogService.MessageOut:connect(function(Message, Type)
+			Connection = MessageOutEvent:connect(function(Message, Type)
 				if Type == Enum.MessageType.MessageError and Message == "ContentProvider:Preload() failed for " .. String:gsub("^rbxhttp:/", "http://www.roblox.com") then
 					IsInvalid = true; Connection:disconnect()
 				end
@@ -755,7 +766,7 @@ ProxyMethods = setmetatable({
 			pcall(ContentProvider.Preload, ContentProvider, String)
 			repeat wait()--[[; print("[" .. String .. "] Queue size:", ContentProvider.RequestQueueSize, "| Invalid:", IsInvalid, "| Timed out:", tick() > Timeout)]] until ContentProvider.RequestQueueSize == 0 or IsInvalid or tick() > Timeout
 			return not IsInvalid
-		end,
+		end, {MessageOutEvent = Services.LogService.MessageOut}),
 		
 		LastIndexOf = function(String, Pattern, MaximumIndex)
 			if Configurations.AssertArgumentTypes then Assert.ExpectArgumentType("Methods.String.LastIndexOf", String, "string", Pattern, "string, number", MaximumIndex, "nil, integer") end
@@ -981,17 +992,17 @@ ProxyMethods = setmetatable({
 		
 		HyperbolicArcCosine = function(Number)
 			if Configurations.AssertArgumentTypes then Assert.ExpectArgumentType("Methods.Number.HyperbolicArcCosine", Number, "number") end
-			return math_log(Number + (Number ^ 2 - 1) ^ 0.5)
+			return math_log(Number + (Number * Number - 1) ^ 0.5)
 		end,
 		
 		HyperbolicArcSine = function(Number)
 			if Configurations.AssertArgumentTypes then Assert.ExpectArgumentType("Methods.Number.HyperbolicArcSine", Number, "number") end
-			return Number == -math_huge and Number or math_log(Number + (Number ^ 2 + 1) ^ 0.5)
+			return Number == -math_huge and Number or math_log(Number + (Number * Number + 1) ^ 0.5)
 		end,
 		
 		HyperbolicArcTangent = function(Number)
 			if Configurations.AssertArgumentTypes then Assert.ExpectArgumentType("Methods.Number.HyperbolicArcTangent", Number, "number") end
-			return math_log((1 + Number) / (1 - Number)) / 2
+			return math_log((1 + Number) / (1 - Number)) * 0.5
 		end,
 		
 		HyperbolicCosine = math.cosh,
@@ -1065,9 +1076,7 @@ ProxyMethods = setmetatable({
 			end
 		end,
 		
-		GetLength = function(Number)
-			return #tostring(Number)
-		end,
+		GetLength = function(Number) return #tostring(Number) end,
 		
 		ToString = tostring
 	}, {__index = math}),
@@ -1138,13 +1147,13 @@ ProxyMethods = setmetatable({
 		end,
 		
 		DisableRewriting = function(Table, DeepApply, WarnRewriteAttempts)
-			if Configurations.AssertArgumentTypes then Assert.ExpectArgumentType("Methods.Table.DisableRewriting", Table, "table", DeepApply, "nil, boolean", WarnRewriteAttemps, "nil, boolean") end
+			if Configurations.AssertArgumentTypes then Assert.ExpectArgumentType("Methods.Table.DisableRewriting", Table, "table", DeepApply, "nil, boolean", WarnRewriteAttempts, "nil, boolean") end
 			local GetUnwrappedObject, TableDisableRewriting = InternalFunctions.GetUnwrappedObject, ProxyMethods.table.DisableRewriting
 			local Iterator = function(Key1, Key2) return next(Table, GetUnwrappedObject(Key1 or Key2)) end
 			if DeepApply then
 				ProxyMethods.table.Map(Table, function(Object)
-					return type(Object) == "table" and TableDisableRewriting(Object, true) or Object
-				end, true)
+					return type(Object) == "table" and TableDisableRewriting(Object, true, WarnRewriteAttempts) or Object
+				end)
 			end
 			return setmetatable({}, {
 				__index = function(__, Key)
@@ -1167,8 +1176,8 @@ ProxyMethods = setmetatable({
 			local Iterator = function(Key1, Key2) return next(Table, GetUnwrappedObject(Key1 or Key2)) end
 			if DeepApply then
 				ProxyMethods.table.Map(Table, function(Object)
-					return type(Object) == "table" and ProxyMethods.table.DisableWriting(Object, true) or Object
-				end, true)
+					return type(Object) == "table" and ProxyMethods.table.DisableWriting(Object, true, WarnWriteAttempts) or Object
+				end)
 			end
 			return setmetatable({}, {
 				__index = function(__, Key)
@@ -1312,7 +1321,7 @@ ProxyMethods = setmetatable({
 			local LastLevel = Table
 			for Level in Path:gmatch("%.-[^%.]+") do
 				local Level = Level:gsub("^%.", "")
-				--if not pcall(function() return LastLevel[Level] end) then return nil end
+				--if not pcall(ProtectedCallHelpers.Get, LastLevel, Level) then return nil end
 				if LastLevel[Level] ~= nil then
 					LastLevel = LastLevel[Level]
 				elseif type(tonumber(Level)) == "number" and LastLevel[tonumber(Level)] ~= nil then
@@ -1526,7 +1535,7 @@ ProxyMethods = setmetatable({
 			if Configurations.AssertArgumentTypes then Assert.ExpectArgumentType("Methods.Table.ToKeyedChildrenTable", Table, "table") end
 			local NewTable, NewTableSize = {}, 0
 			for Index, Instance in next, Table do
-				if pcall(function() return Instance.Name end) then
+				if pcall(ProtectedCallHelpers.Get, Instance, "Name") then
 					NewTable[Instance.Name] = Instance
 				else
 					NewTableSize = NewTableSize + 1; NewTable[NewTableSize] = Instance
@@ -1856,9 +1865,9 @@ ProxyMethods = setmetatable({
 			if type(Object) == "table" then
 				local TableSize = #Table
 				for Key, Value in next, Object do
-					if type(Key) == "number" and not (OverwriteNumericIndices or Table.__overwritenumindex) then
+					if type(Key) == "number" and not OverwriteNumericIndices then
 						TableSize = TableSize + 1; Table[TableSize] = Value
-					elseif Table[Key] == nil or (Overwrite or Table.__overwrite) then
+					elseif Table[Key] == nil or Overwrite then
 						Table[Key] = Value
 					end
 				end
@@ -1902,9 +1911,7 @@ ProxyMethods = setmetatable({
 		
 		GetSize = function(Table)
 			local Size = 0
-			for __ in next, Table do
-				Size = Size + 1
-			end
+			for __ in next, Table do Size = Size + 1 end
 			return Size
 		end,
 		
@@ -1914,12 +1921,12 @@ ProxyMethods = setmetatable({
 			for Key, Value in next, Table do
 				if Key == End then
 					break
-				elseif Key ~= "__sep" and (not Begin or Key == Begin) then
+				elseif not Begin or Key == Begin then
 					Value = tostring(_(Value))
-					StringSize = StringSize + 1; String[StringSize] = (type(Key) == "number" and Value or tostring(_(Key)) .. " = " .. Value) .. (Separator or Table.__sep or ", ")
+					StringSize = StringSize + 1; String[StringSize] = (type(Key) == "number" and Value or tostring(_(Key)) .. " = " .. Value) .. (Separator or ", ")
 				end
 			end
-			return (Separator and "" or "Table[0x" .. tostring(Table):sub(-8) .. "]{") .. table_concat(String):gsub((Separator or Table.__sep or ", ") .. "$", "") .. (Separator and "" or "}")
+			return (Separator and "" or "Table[0x" .. tostring(Table):sub(-8) .. "]{") .. table_concat(String):gsub((Separator or ", ") .. "$", "") .. (Separator and "" or "}")
 		end
 	}, {__index = table}),
 	
@@ -1960,9 +1967,7 @@ ProxyMethods = setmetatable({
 		
 		GetProtectedCaller = function(Function)
 			if Configurations.AssertArgumentTypes then Assert.ExpectArgumentType("Methods.Function.GetProtectedCaller", Function, "function") end
-			return function(...)
-				return pcall(Function, ...)
-			end
+			return function(...) return pcall(Function, ...) end
 		end,
 		
 		IsLuaFunction = function(Function)
@@ -2067,7 +2072,7 @@ ProxyMethods = setmetatable({
 			
 			GetAllChildren = function(Instance, Properties, CaseInsensitive, PartialMatch, MatchAllProperties)
 				if Configurations.AssertArgumentTypes then Assert.ExpectArgumentType("Methods.Userdata.Instance.GetAllChildren", Instance, "instance", Properties, "nil, table", CaseInsensitive, "nil, boolean", PartialMatch, "nil, boolean", MatchAllProperties, "nil, boolean") end
-				local Instances, InstancesSize, Children, InstanceGetAllChildren, StringContains, TableMatch, TableGetSize, TableClone, TableIndexOf = {}, 0, Instance:GetChildren(), ProxyMethods.userdata.Instance.GetAllChildren, ProxyMethods.string.Contains, ProxyMethods.table.Match, ProxyMethods.table.GetSize, ProxyMethods.table.Clone, ProxyMethods.table.IndexOf
+				local Instances, InstancesSize, Children, InstanceGetAllChildren, StringContains, TableMatch, TableGetSize, TableClone, TableIndexOf, GetProperty = {}, 0, Instance:GetChildren(), ProxyMethods.userdata.Instance.GetAllChildren, ProxyMethods.string.Contains, ProxyMethods.table.Match, ProxyMethods.table.GetSize, ProxyMethods.table.Clone, ProxyMethods.table.IndexOf, ProtectedCallHelpers.Get
 				for Index = 1, #Children do
 					local Instance = Children[Index]
 					if pcall(Instance.GetChildren, Instance) and #Instance:GetChildren() > 0 then
@@ -2078,7 +2083,7 @@ ProxyMethods = setmetatable({
 					if Properties then
 						local MatchedProperties = {}
 						for Property, Value in next, Properties do
-							if pcall(function() return Instance[Property] end) then
+							if pcall(GetProperty, Instance, Property) then
 								for __, Value in next, type(Value) == "table" and Value or {Value} do
 									if PartialMatch and StringContains(tostring(Instance[Property]), Value, CaseInsensitive) or Instance[Property] == Value then
 										MatchedProperties[Property] = Value
@@ -2107,52 +2112,39 @@ ProxyMethods = setmetatable({
 				return Instances
 			end,
 			
-			GetAllMembers = function(Instance, Type)
-				if Configurations.AssertArgumentTypes then Assert.ExpectArgumentType("Methods.Userdata.Instance.GetAllMembers", Instance, "instance", Type, "nil, string, table") end
+			GetAllMembers = function(Instance, Type, NoCache)
+				if Configurations.AssertArgumentTypes then Assert.ExpectArgumentType("Methods.Userdata.Instance.GetAllMembers", Instance, "instance", Type, "nil, string") end
 				local Entries, EntriesSize = {}, 0
-				if type(Type) == "table" then
-					local InstanceGetAllMembers = ProxyMethods.userdata.Instance.GetAllMembers
-					for Index = 1, #Type do
-						local Type = Type[Index]
-						if Storage.Constant.Instance["All" .. Type] then
-							local Type = InstanceGetAllMembers(Instance, Type)
-							for Index = 1, #Type do
-								EntriesSize = EntriesSize + 1; Entries[EntriesSize] = Type[Index]
-							end
-						end
-					end
-					table_sort(Entries)
-				elseif Type then
+				if Type then
 					local TypeMembers = Storage.Constant.Instance["All" .. Type]
 					if TypeMembers then
 						local ClassName, PersistentInstanceStorage, InstanceHasProperty = Instance.ClassName, Storage.Persistent.Instance, ProxyMethods.userdata.Instance.HasProperty
 						local Cache = PersistentInstanceStorage[ClassName]
 						if not Cache then
-							Cache = {}
-							PersistentInstanceStorage[ClassName] = Cache
-						elseif Cache[Type] then
+							Cache = {}; PersistentInstanceStorage[ClassName] = Cache
+						elseif not NoCache and Cache[Type] then
 							--print("Cache of", Type, "for", ClassName, "found!")
-							--for __, 
 							return Cache[Type]
 						end
 						if Type == "Members" then
-							for Index = 1, #TypeMembers do
+							for Index = 1, TypeMembers.__size do --#TypeMembers
 								local Name = TypeMembers[Index]
 								if Instance:IsA(Name) then
 									EntriesSize = EntriesSize + 1; Entries[EntriesSize] = Name
 								end
 							end
 						elseif Type == "Properties" then
-							for Index = 1, #TypeMembers do
+							for Index = 1, TypeMembers.__size do --#TypeMembers
 								local Name = TypeMembers[Index]
 								if InstanceHasProperty(Instance, Name) then
 									EntriesSize = EntriesSize + 1; Entries[EntriesSize] = Name
 								end
 							end
 						else
-							for Index = 1, #TypeMembers do
+							local GetMember = ProtectedCallHelpers.Get
+							for Index = 1, TypeMembers.__size do --#TypeMembers
 								local Name = TypeMembers[Index]
-								if pcall(function() return Instance[Name] end) then
+								if pcall(GetMember, Instance, Name) then
 									EntriesSize = EntriesSize + 1; Entries[EntriesSize] = Name
 								end
 							end
@@ -2163,7 +2155,7 @@ ProxyMethods = setmetatable({
 					local InstanceGetAllMembers = ProxyMethods.userdata.Instance.GetAllMembers
 					for Type in next, Storage.Constant.Instance do
 						local Type = InstanceGetAllMembers(Instance, Type:sub(4))
-						for Index = 1, #Type do
+						for Index = 1, Type.__size do --#Type
 							EntriesSize = EntriesSize + 1; Entries[EntriesSize] = Type[Index]
 						end
 					end
@@ -2185,7 +2177,7 @@ ProxyMethods = setmetatable({
 			
 			HasProperty = function(Instance, Property)
 				if Configurations.AssertArgumentTypes then Assert.ExpectArgumentType("Methods.Userdata.Instance.HasProperty", Instance, "instance", Property, "string") end
-				return select(2, pcall(function() Instance[Property] = Instance[Property] end)) ~= Property .. " is not a valid member of " .. Instance.ClassName
+				return select(2, pcall(ProtectedCallHelpers.SetSelf, Instance, Property)) ~= Property .. " is not a valid member of " .. Instance.ClassName
 			end,
 			
 			IsCreatable = function(Instance)
@@ -2193,114 +2185,152 @@ ProxyMethods = setmetatable({
 				return (pcall(NewInstance, Instance.ClassName))
 			end,
 			
-			IsPropertyReadOnly = function(Instance, Property)
+			IsPropertyReadOnly = setfenv(function(Instance, Property, NoCache)
 				if Configurations.AssertArgumentTypes then Assert.ExpectArgumentType("Methods.Userdata.Instance.IsPropertyReadOnly", Instance, "instance", Property, "string") end
 				Assert("Methods.Userdata.Instance.IsPropertyReadOnly", ProxyMethods.userdata.Instance.HasProperty(Instance, Property), "\"" .. Property .. "\" is not a valid property of class \"" .. Instance.ClassName .. "\"!")
-				if pcall(function() return Instance[Property] end) then
+				local Cache = PersistentInstanceStorage.PropertyWritabilityMap[Instance.ClassName]
+				if not Cache then
+					Cache = {}; PersistentInstanceStorage.PropertyWritabilityMap[Instance.ClassName] = Cache
+				elseif not NoCache and Cache[Property] ~= nil then
+					--print("Cache found!")
+					return not Cache[Property]
+				end
+				if pcall(ProtectedCallHelpers.Get, Instance, Property) then
 					if Property ~= "Parent" and pcall(NewInstance, Instance.ClassName) then
 						Instance = NewInstance(Instance.ClassName)
 					end
-					return not pcall(function() Instance[Property] = Instance[Property] end)
+					local IsWritable = pcall(ProtectedCallHelpers.SetSelf, Instance, Property)
+					Cache[Property] = IsWritable; return not IsWritable
 				end
 				return nil
-			end,
+			end, {PersistentInstanceStorage = Storage.Persistent.Instance}),
 			
-			RemoveAllChildren = function(...)
+			RemoveAllChildren = setfenv(function(...)
 				if Configurations.AssertArgumentTypes then Assert.ExpectArgumentType("Methods.Userdata.Instance.RemoveAllChildren", ({...})[1], "instance") end
-				ProxyMethods.table.ForEach(ProxyMethods.userdata.Instance.GetAllChildren(...), function(Instance) pcall(game.Destroy, Instance) end)
-			end,
+				ProxyMethods.table.ForEach(ProxyMethods.userdata.Instance.GetAllChildren(...), ProtectedDestroy)
+			end, {ProtectedDestroy = function(Instance) pcall(game.Destroy, Instance) end}),
 			
-			Serialize = function(Instance, IncludeChildren, ReturnAsTable)
+			Serialize = setfenv(function(Instance, IncludeChildren, ReturnAsTable, Root)
 				if Configurations.AssertArgumentTypes then Assert.ExpectArgumentType("Methods.Userdata.Instance.Serialize", Instance, "instance", IncludeChildren, "nil, boolean", ReturnAsTable, "nil, boolean") end
 				Assert("Methods.Userdata.Instance.Serialize", pcall(NewInstance, Instance.ClassName), "The instance \"" .. Instance.Name .. "\" of class \"" .. Instance.ClassName .. "\" is not creatable!")
 				Instance.Archivable = true; Instance = Instance:Clone(); if Instance.ClassName == "Model" then Instance:MakeJoints() end --Clone root before serialization to avoid unwanted modifications on original objects
-				local Children = IncludeChildren and Instance:GetChildren() or nil
+				local Children = IncludeChildren and Instance:GetChildren() or nil; if not Root then Root = Instance end
 				local Properties, Output = ProxyMethods.userdata.Instance.GetAllMembers(Instance, "Properties"), {ClassName = Instance.ClassName, __children = Children} --ClassName won't be serialized because it is read-only
-				local SerializeInstance, IsInstancePropertyReadOnly, GetUserdataType, UserdataToString, TableIndexOf, Warn = ProxyMethods.userdata.Instance.Serialize, ProxyMethods.userdata.Instance.IsPropertyReadOnly, ProxyMethods.userdata.GetUserdataType, ProxyMethods.userdata.ToString, ProxyMethods.table.IndexOf, Log.Warn
+				local Processor, IsInstancePropertyReadOnly, Warn, Helpers = Processor, ProxyMethods.userdata.Instance.IsPropertyReadOnly, Log.Warn, {
+					TableIndexOf = ProxyMethods.table.IndexOf,
+					UserdataToString = ProxyMethods.userdata.ToString
+				}
 				for Index = 1, #Properties do
 					local MemberName = Properties[Index]
 					if IsInstancePropertyReadOnly(Instance, MemberName) == false then
-						local Successful, Error = pcall(function()
-							local Member = Instance[MemberName]
-							local MemberType = type(Member)
-							if MemberType == "userdata" then
-								if GetUserdataType(Member) == "instance" then
-									if Member.Parent == Instance and IncludeChildren then
-										Output[MemberName] = "__children[" .. TableIndexOf(Children, Member) .. "]"
-									else
-										Output[MemberName] = "__return[" .. Member:GetFullName() .. "]"
-									end
-								else
-									Output[MemberName] = "__$" .. UserdataToString(Member)
-								end
-							else
-								Output[MemberName] = Member
-							end
-						end)
+						local Successful, Error = pcall(Processor, Output, Instance, MemberName, Root, IncludeChildren and Children, Helpers)
 						if not Successful then
 							Warn("Methods.Userdata.Instance.Serialize", "Unable to serialize property \"" .. MemberName .. "\" for instance \"" .. Instance.Name .. "\" of class \"" .. Instance.ClassName .. "\": " .. Error)
 						end
 					end
 				end
-				if IncludeChildren then
+				if IncludeChildren and #Children > 0 then
+					local SerializeInstance = ProxyMethods.userdata.Instance.Serialize
 					for Index = 1, #Children do
 						local Child = Children[Index]
 						if pcall(NewInstance, Child.ClassName) then
-							Children[Index] = SerializeInstance(Child, true, true)
+							Children[Index] = SerializeInstance(Child, true, true, Root)
 						end
 					end
+				else
+					Output.__children = nil
 				end
 				return ReturnAsTable and Output or Services.HttpService:JSONEncode(Output)
-			end,
+			end, {
+				Processor = setfenv(function(Output, Instance, MemberName, Root, Children, Helpers)
+					local Member = Instance[MemberName]; local MemberType = type(Member)
+					if MemberType == "userdata" then
+						if pcall(InstanceTypeTest, Member) then
+							local MemberParent = Member.Parent
+							if MemberParent == Instance and Children then
+								Output[MemberName] = "__children[" .. Helpers.TableIndexOf(Children, Member) .. "]"
+							else
+								--print("Serializing", MemberName, "|", Member:GetFullName():sub(MemberParent == Root and #Root.Name + 2 or #Member.Name + 3), "|", MemberParent)
+								Output[MemberName] = "__return[" .. (MemberParent == Root and "!" or "") .. (MemberParent and Member:GetFullName():sub(MemberParent == Root and #Root.Name + 2 or #Member.Name + 3) or "") .. "]"
+							end
+						else
+							local UserdataString = Helpers.UserdataToString(Member)
+							local OpeningBracketIndex = UserdataString:find("%[")
+							Output[MemberName] = UserdataString:sub(1, OpeningBracketIndex - 1) .. "$$" .. UserdataString:sub(OpeningBracketIndex + 1, -2) --"__$" .. Helpers.UserdataToString(Member)
+						end
+					else
+						Output[MemberName] = Member
+					end
+				end, {InstanceTypeTest = Storage.Constant.Userdata.TypeTests.Instance})
+			}),
 			
 			SetProperties = function(Instance, Properties)
 				if Configurations.AssertArgumentTypes then Assert.ExpectArgumentType("Methods.Userdata.Instance.SetProperties", Instance, "instance", Properties, "table") end
-				local IsInstancePropertyReadOnly = ProxyMethods.userdata.Instance.IsPropertyReadOnly
+				local SetProperty, IsInstancePropertyReadOnly = ProtectedCallHelpers.Set, ProxyMethods.userdata.Instance.IsPropertyReadOnly
 				for Property, Value in next, Properties do
-					pcall(function() Instance[Property] = Value end)
+					pcall(SetProperty, Instance, Property, Value)
 				end
 				return Instance
 			end,
 			
-			Unserialize = function(Input, Parent) --Grouped with instance methods for ease of remembering
+			Unserialize = setfenv(function(Input, Parent, Links, IsDescendant) --Grouped with instance methods for ease of remembering
 				if Configurations.AssertArgumentTypes then Assert.ExpectArgumentType("Methods.Userdata.Instance.Unserialize", Input, "string, table", Parent, "nil, Instance") end
 				local Decoded = type(Input) == "string" and Services.HttpService:JSONDecode(Input) or type(Input) == "table" and Input or nil
 				local ClassName = Decoded.ClassName; Decoded.ClassName = nil
 				local Instance, Children = NewInstance(ClassName), Decoded.__children
-				local IsInstancePropertyReadOnly, TableGetNest, Decoders, Warn = ProxyMethods.userdata.Instance.IsPropertyReadOnly, ProxyMethods.table.GetNest, Storage.Constant.Userdata.Decoders, Log.Warn
+				local Processor, Warn, Helpers = Processor, Log.Warn
+				if not IsDescendant then Links = {} end
 				if Children then
 					local UnserializeInstance = ProxyMethods.userdata.Instance.Unserialize
 					for Index = 1, #Children do
-						Children[Index] = UnserializeInstance(Children[Index], Instance)
+						Children[Index] = UnserializeInstance(Children[Index], Instance, Links, true)
 					end
 					Decoded.__children = nil
 				end
 				for MemberName, Member in next, Decoded do
-					local Successful, Error = pcall(function()
-						if type(Member) == "string" and (Member:sub(1, 10) == "__children" or Member:sub(1, 8) == "__return") then
-							local MemberItem = Member:match("%b[]"):sub(2, -2)
-							Instance[MemberName] = Member:sub(1, 10) == "__children" and Children[tonumber(MemberItem)] or TableGetNest(game, MemberItem)
-						else
-							--if not IsInstancePropertyReadOnly(Instance, MemberName) then
-								if type(Member) == "string" and Member:sub(1, 3) == "__$" then
-									Instance[MemberName] = Decoders[Member:match("%w+")](Member:match("%b[]"):sub(2, -2))
-								else
-									Instance[MemberName] = Member
-								end
-							--else
-							--	Warn("Methods.Userdata.Instance.Unserialize", "The \"" .. MemberName .. "\" property of instance \"" .. Decoded.Name .. "\" of class \"" .. ClassName .. "\" is read-only.")
-							--end
-						end
-					end)
+					local Successful, Error = pcall(Processor, Instance, Member, MemberName, Children, Links)
 					if not Successful then
 						Warn("Methods.Userdata.Instance.Unserialize", "Unable to set property \"" .. MemberName .. "\" for instance \"" .. Decoded.Name .. "\" of class \"" .. ClassName .. "\": " .. Error)
 					end
 				end
-				Instance.Parent = Parent--; pcall(function() Instance:MakeJoints() end)
+				if not IsDescendant then
+					local Successful, Error = pcall(LinksProcessor, Instance, Links)
+					if not Successful then
+						Warn("Methods.Userdata.Instance.Unserialize", "An error has occurred while linking properties for instance \"" .. Decoded.Name .. "\" of class \"" .. ClassName .. "\": " .. Error)
+					end
+				end
+				Instance.Parent = Parent; pcall(ProtectedCallHelpers.CallMethod, Instance, "MakeJoints")
 				return Instance
-			end,
+			end, {
+				Processor = setfenv(function(Instance, Member, MemberName, Children, Links)
+					if type(Member) == "string" and (Member:sub(1, 10) == "__children" or Member:sub(1, 8) == "__return") then
+						if Member:sub(1, 10) == "__children" then
+							Instance[MemberName] = Children[tonumber(Member:match("%d+"))]
+						else
+							local LinksSize = #Links
+							Links[LinksSize + 1] = Instance; Links[LinksSize + 2] = MemberName; Links[LinksSize + 3] = Member:match("%b[]"):sub(2, -2)
+						end
+					else
+						if type(Member) == "string" and Member:find("%$%$") then
+							local SeparatorIndex = Member:find("%$%$")
+							Instance[MemberName] = UserdataConstantStorage.Decoders[Member:sub(1, SeparatorIndex - 1)](Member:sub(SeparatorIndex + 2))
+						else
+							Instance[MemberName] = Member
+						end
+					end
+				end, {UserdataConstantStorage = Storage.Constant.Userdata}),
+				
+				LinksProcessor = function(Instance, Links) --"!" = root, "" = parent, "!a" == root.a
+					local TableGetNest = ProxyMethods.table.GetNest
+					for Index = 1, #Links, 3 do
+						--print(_(Links[Index], Links[Index + 1], Links[Index + 2], #Links[Index + 2]))
+						local Link = Links[Index + 2]
+						Links[Index][Links[Index + 1]] = Link == "!" and Instance or Link == "" and Links[Index].Parent or Link:sub(1, 1) == "!" and TableGetNest(Instance, Link:sub(2)) or TableGetNest(Instance, Link)
+					end
+				end
+			}),
 			
-			WaitForChild = function(Instance, Name, IncludeDescendants)
+			WaitForChild = setfenv(function(Instance, Name, IncludeDescendants)
 				if Configurations.AssertArgumentTypes then Assert.ExpectArgumentType("Methods.Userdata.Instance.WaitForChild", Instance, "instance", Name, "string", IncludeDescendants, "nil, boolean") end
 				if IncludeDescendants then
 					local Found = Instance:FindFirstChild(Name, true); if Found then return Found end
@@ -2308,7 +2338,7 @@ ProxyMethods = setmetatable({
 						ConnectionsSize = ConnectionsSize + 1; Connections[ConnectionsSize] = Instance.Changed:connect(function(Property) if Property == "Name" and Instance.Name == Name then Found = Instance end end)
 					end
 					Connections[1] = Instance.DescendantAdded:connect(function(Instance)
-						if pcall(function() return Instance.Name end) and Instance.Name == Name then
+						if pcall(ProtectedCallHelpers.Get, Instance, "Name") and Instance.Name == Name then
 							Found = Instance
 						else
 							ConnectCallback()
@@ -2318,12 +2348,12 @@ ProxyMethods = setmetatable({
 						pcall(ConnectCallback)
 					end
 					repeat wait() until Found
-					ProxyMethods.table.ForEach(Connections, function(Connection) Connection:disconnect() end)
+					ProxyMethods.table.ForEach(Connections, DisconnectConnection)
 					return Found
 				else
 					return Instance:WaitForChild(Name)
 				end
-			end,
+			end, {DisconnectConnection = function(Connection) Connection:disconnect() end}),
 			
 			--Metamethods
 			GetSize = function(Instance, IncludeChildren)
@@ -2373,10 +2403,10 @@ ProxyMethods = setmetatable({
 		ToString = setfenv(function(Userdata)
 			local UserdataString, UserdataType = tostring(Userdata), ProxyMethods.userdata.GetUserdataType(Userdata)
 			local OutputString = UserdataEncoders[UserdataType](Userdata)
-			return (UserdataType == "Instance" and Userdata == game:FindService(pcall(function() return Userdata.ClassName end) and #Userdata.ClassName > 0 and Userdata.ClassName or pcall(game.FindService, game, UserdataString) and UserdataString or "nil") and "Service" or UserdataType) .. (#OutputString > 0 and "[" .. OutputString .. "]" or "")
+			return (UserdataType == "Instance" and Userdata == game:FindService(pcall(ProtectedCallHelpers.Get, Userdata, "ClassName") and #Userdata.ClassName > 0 and Userdata.ClassName or pcall(game.FindService, game, UserdataString) and UserdataString or "nil") and "Service" or UserdataType) .. (#OutputString > 0 and "[" .. OutputString .. "]" or "")
 		end, {UserdataEncoders = Storage.Constant.Userdata.Encoders})
 	}
-}, {__index = function(Self, Key) return rawget(Self, Key:lower()) end})
+}, {__index = function(Self, Key) return type(Key) == "string" and rawget(Self, Key:lower()) or nil end})
 setmetatable(Functions, {__index = ProxyMethods})
 
 --Shared metamethods for proxies; required for proper invocation of comparison metamethods (see http://www.lua.org/pil/13.2.html)
@@ -2417,7 +2447,7 @@ local ProxySharedMetamethods = {
 --Initialize storage
 Storage.Constant.DefaultConfigurations = ProxyMethods.table.Clone(Configurations) --Store default configurations
 Storage.Constant = ProxyMethods.table.DisableWriting(Storage.Constant, true) --Disable writing to constant storage
-Storage.Persistent = ProxyMethods.table.DisableRewriting(Storage.Persistent, true) --Disable rewriting to persistent storage
+Storage.Persistent = ProxyMethods.table.DisableRewriting(Storage.Persistent, true, true) --Disable rewriting to persistent storage
 Storage = ProxyMethods.table.DisableWriting(Storage) --Disable writing to storage root
 
 --Disable writing to exposed library components
@@ -2425,7 +2455,7 @@ Functions, ProxyMethods, Services, Libraries, Capabilities = unpack(ProxyMethods
 
 --Set the library/object wrapper entry point
 _ = Functions.Create.Proxy({
-	__call = function(__, ...)
+	__call = setfenv(function(__, ...)
 		local Arguments, ArgumentCount, Proxies = {...}, select("#", ...), {}
 		local GetUnwrappedObjects, GetProxyMethod, IsType = InternalFunctions.GetUnwrappedObjects, InternalFunctions.GetProxyMethod, InternalFunctions.IsType
 		for Index = 1, ArgumentCount do
@@ -2433,7 +2463,7 @@ _ = Functions.Create.Proxy({
 			if Object == nil or InternalFunctions.IsWrappedObject(Object) then
 				Proxies[Index] = Object
 			else
-				local Object, ObjectString, Type, Methods = type(Object) == "table" and not Configurations.PerformTableOperationsInPlace and ProxyMethods.table.Clone(Object, true) or Object, tostring(Object), type(Object), setmetatable({}, {
+				local Object, ObjectString, Type, Methods = type(Object) == "table" and not Configurations.DirectlyModifyTables and ProxyMethods.table.Clone(Object, true) or Object, tostring(Object), type(Object), setmetatable({}, {
 					__index = function(Self, Key)
 						local Method = GetProxyMethod(Object, Key)
 						Self[Key] = Method; return Method
@@ -2497,10 +2527,11 @@ _ = Functions.Create.Proxy({
 			end
 		end
 		return unpack(Proxies, 1, ArgumentCount)
-	end,
+	end, {
+		
+	}),
 	__index = setmetatable({
 		Functions = Functions,
-		InternalFunctions = InternalFunctions,
 		Services = Services,
 		Libraries = Libraries,
 		Storage = Storage,
@@ -2521,7 +2552,6 @@ _ = Functions.Create.Proxy({
 					Assert.ExpectArgumentType("Configurations.Get", Key, "string")
 					return Configurations[Key]
 				end
-				
 			}),
 			__newindex = function(__, Key, Value)
 				Assert.ExpectArgumentType("Configurations.Set", Key, "string")
