@@ -9,9 +9,9 @@
 
 --Configurations
 local Configurations = {
-	AssertArgumentTypes = false,	--Assert correct argument types; disable for less overhead but errors will be less verbose
-	ContinueOnError = false,		--Continue on non-fatal protected function call errors
-	DirectlyModifyTables = false	--Directly modify wrapped tables' original object
+	AssertArgumentTypes = false, --Assert correct argument types; disable for less overhead but errors will be less verbose
+	ContinueOnError = false, --Continue on non-fatal protected function call errors
+	DirectlyModifyTables = false --Directly modify wrapped tables' original object
 }
 
 --Predeclare references
@@ -1619,13 +1619,9 @@ ProxyMethods = setmetatable({
 			if Configurations.AssertArgumentTypes then Assert.ExpectArgumentType("Methods.Table.ClearArray", Table, "table") end
 			local Check = math_random(); Table[1] = Check
 			if Table[1] == Check then
-				for Index = 1, #Table do
-					Table[Index] = nil
-				end
-			else
-				for Index = 1, #Table do
-					rawset(Table, Index, nil)
-				end
+				for Index = 1, #Table do Table[Index] = nil end
+			else --Change was intercepted by a metamethod
+				for Index = 1, #Table do rawset(Table, Index, nil) end
 			end
 			return Table
 		end,
@@ -1633,14 +1629,10 @@ ProxyMethods = setmetatable({
 		ClearHash = function(Table)
 			if Configurations.AssertArgumentTypes then Assert.ExpectArgumentType("Methods.Table.ClearHash", Table, "table") end
 			local Check = math_random(); Table[next(Table)] = Check
-			if Table[1] == Check then
-				for Index = 1, #Table do
-					Table[Index] = nil
-				end
+			if Table[next(Table)] == Check then
+				for Index = 1, #Table do Table[Index] = nil end
 			else --Change was intercepted by a metamethod
-				for Index = 1, #Table do
-					rawset(Table, Index, nil)
-				end
+				for Index = 1, #Table do rawset(Table, Index, nil) end
 			end
 			return Table
 		end,
