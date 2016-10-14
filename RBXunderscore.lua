@@ -75,40 +75,6 @@ local Storage, Capabilities = {
 			AllCallbacks = {"ConfirmationCallback", "DeleteFilter", "ErrorCallback", "EventFilter", "NewFilter", "OnClientInvoke", "OnClose", "OnInvoke", "OnServerInvoke", "ProcessReceipt", "PropertyFilter", "RequestShutdown", "SendCoreUiNotification"}
 		},
 		
-		DummyObjects = {
-			Instances = setmetatable({}, {
-				__index = function(Self, ClassName)
-					local Successful, Instance = pcall(NewInstance, ClassName)
-					if Successful then Self[ClassName] = Instance; return Instance end; return nil
-				end
-			}),
-			
-			ROBLOXUserdata = {
-				Axes = NewAxes(),
-				BrickColor = NewBrickColor(),
-				CellId = NewCellId(),
-				CFrame = NewCFrame(),
-				Color3 = NewColor3(),
-				ColorSequence = NewColorSequence(NewColor3()),
-				ColorSequenceKeypoint = NewColorSequenceKeypoint(0, NewColor3()),
-				Faces = NewFaces(),
-				NumberRange = NewNumberRange(0),
-				NumberSequence = NewNumberSequence(0),
-				NumberSequenceKeypoint = NewNumberSequenceKeypoint(0, 0),
-				PhysicalProperties = NewPhysicalProperties(0, 0, 0),
-				Ray = NewRay(),
-				Rect = NewRect(),
-				Region3 = NewRegion3(),
-				Region3int16 = NewRegion3int16(),
-				UDim = NewUDim(),
-				UDim2 = NewUDim2(),
-				Vector2 = NewVector2(),
-				Vector2int16 = NewVector2int16(),
-				Vector3 = NewVector3(),
-				Vector3int16 = NewVector3int16()
-			}
-		},
-		
 		--Empty immutable objects for accumulators
 		EmptyAccumulativeObjects = {
 			string = "",
@@ -271,7 +237,38 @@ local Storage, Capabilities = {
 				Vector3 = function(String) local Decoded = ProxyMethods.string.Split(String, ", "); return NewVector3(Decoded[1], Decoded[2], Decoded[3]) end,
 				Vector3int16 = function(String) local Decoded = ProxyMethods.string.Split(String, ", "); return NewVector3int16(Decoded[1], Decoded[2], Decoded[3]) end,
 				Fallback = function(String) warn("No method of unserializing \"" .. String .. "\"") end
-			}, {__index = function(Self) return Self.Fallback end})
+			}, {__index = function(Self) return Self.Fallback end}),
+			
+			DummyObjects = {
+				Instances = setmetatable({}, {
+					__index = function(Self, ClassName)
+						local Successful, Instance = pcall(NewInstance, ClassName)
+						if Successful then Self[ClassName] = Instance; return Instance end; return nil
+					end
+				}),
+				Axes = NewAxes(),
+				BrickColor = NewBrickColor(),
+				CellId = NewCellId(),
+				CFrame = NewCFrame(),
+				Color3 = NewColor3(),
+				ColorSequence = NewColorSequence(NewColor3()),
+				ColorSequenceKeypoint = NewColorSequenceKeypoint(0, NewColor3()),
+				Faces = NewFaces(),
+				NumberRange = NewNumberRange(0),
+				NumberSequence = NewNumberSequence(0),
+				NumberSequenceKeypoint = NewNumberSequenceKeypoint(0, 0),
+				PhysicalProperties = NewPhysicalProperties(0, 0, 0),
+				Ray = NewRay(),
+				Rect = NewRect(),
+				Region3 = NewRegion3(),
+				Region3int16 = NewRegion3int16(),
+				UDim = NewUDim(),
+				UDim2 = NewUDim2(),
+				Vector2 = NewVector2(),
+				Vector2int16 = NewVector2int16(),
+				Vector3 = NewVector3(),
+				Vector3int16 = NewVector3int16()
+			}
 		},
 		
 		Math = {
@@ -2044,6 +2041,17 @@ ProxyMethods = setmetatable({
 				end
 			},
 			
+			Clone = function(Instance, ForceClone)
+				if Configurations.AssertArgumentTypes then Assert.ExpectArgumentType("Methods.Userdata.Instance.Clone", Instance, "instance", ForceClone, "nil, boolean") end
+				if ForceClone then
+					Instance.Archivable = true
+					for __, Instance in next, ProxyMethods.userdata.Instance.GetAllChildren(Instance) do
+						Instance.Archivable = true
+					end
+				end
+				return Instance:Clone()
+			end,
+			
 			CreateNest = function(Instance, Path, ClassName, Content, ReturnNest)
 				if Configurations.AssertArgumentTypes then Assert.ExpectArgumentType("Methods.Userdata.Instance.CreateNest", Instance, "instance", Path, "string", ClassName, "string", Content, "anything", ReturnNest, "nil, boolean") end
 				local LastLevel, CreateInstance = Instance, Instance.Create
@@ -2175,14 +2183,11 @@ ProxyMethods = setmetatable({
 					return not Cache[Property]
 				end
 				if pcall(ProtectedCallHelpers.Get, Instance, Property) then
-					if Property ~= "Parent" and pcall(NewInstance, Instance.ClassName) then
-						Instance = NewInstance(Instance.ClassName)
-					end
-					local IsWritable = pcall(ProtectedCallHelpers.SetSelf, Instance, Property)
+					local IsWritable = Property == "Parent" or pcall(ProtectedCallHelpers.SetSelf, Instance, Property) or pcall(ProtectedCallHelpers.Set, DummyInstances[Instance.ClassName] or Instance, Property, Instance[Property])
 					Cache[Property] = IsWritable; return not IsWritable
 				end
 				return nil
-			end, {PersistentInstanceStorage = Storage.Persistent.Instance}),
+			end, {PersistentInstanceStorage = Storage.Persistent.Instance, DummyInstances = Storage.Constant.Userdata.DummyObjects.Instances}),
 			
 			RemoveAllChildren = setfenv(function(...)
 				if Configurations.AssertArgumentTypes then Assert.ExpectArgumentType("Methods.Userdata.Instance.RemoveAllChildren", ({...})[1], "instance") end
@@ -2190,7 +2195,7 @@ ProxyMethods = setmetatable({
 			end, {ProtectedDestroy = function(Instance) pcall(game.Destroy, Instance) end}),
 			
 			Serialize = setfenv(function(Instance, IncludeChildren, ReturnAsTable, Root)
-				if Configurations.AssertArgumentTypes then Assert.ExpectArgumentType("Methods.Userdata.Instance.Serialize", Instance, "instance", IncludeChildren, "nil, boolean", ReturnAsTable, "nil, boolean") end
+				if Configurations.AssertArgumentTypes then Assert.ExpectArgumentType("Methods.Userdata.Instance.Serialize", Instance, "instance", IncludeChildren, "nil, boolean", ReturnAsTable, "nil, boolean", Root, "nil, instance") end
 				Assert("Methods.Userdata.Instance.Serialize", pcall(NewInstance, Instance.ClassName), "The instance \"" .. Instance.Name .. "\" of class \"" .. Instance.ClassName .. "\" is not creatable!")
 				Instance.Archivable = true; Instance = Instance:Clone(); if Instance.ClassName == "Model" then Instance:MakeJoints() end --Clone root before serialization to avoid unwanted modifications on original objects
 				local Children = IncludeChildren and Instance:GetChildren() or nil; if not Root then Root = Instance end
@@ -2201,7 +2206,7 @@ ProxyMethods = setmetatable({
 				}
 				for Index = 1, #Properties do
 					local MemberName = Properties[Index]
-					if IsInstancePropertyReadOnly(Instance, MemberName) == false then
+					if IsInstancePropertyReadOnly(Instance, MemberName, true) == false then
 						local Successful, Error = pcall(Processor, Output, Instance, MemberName, Root, IncludeChildren and Children, Helpers)
 						if not Successful then
 							Warn("Methods.Userdata.Instance.Serialize", "Unable to serialize property \"" .. MemberName .. "\" for instance \"" .. Instance.Name .. "\" of class \"" .. Instance.ClassName .. "\": " .. Error)
@@ -2227,10 +2232,10 @@ ProxyMethods = setmetatable({
 						if pcall(InstanceTypeTest, Member) then
 							local MemberParent = Member.Parent
 							if MemberParent == Instance and Children then
-								Output[MemberName] = "__children[" .. Helpers.TableIndexOf(Children, Member) .. "]"
+								Output[MemberName] = "__children$$" .. Helpers.TableIndexOf(Children, Member)
 							else
 								--print("Serializing", MemberName, "|", Member:GetFullName():sub(MemberParent == Root and #Root.Name + 2 or #Member.Name + 3), "|", MemberParent)
-								Output[MemberName] = "__return[" .. (MemberParent == Root and "!" or "") .. (MemberParent and Member:GetFullName():sub(MemberParent == Root and #Root.Name + 2 or #Member.Name + 3) or "") .. "]"
+								Output[MemberName] = "__return$$" .. (MemberParent == Root and "!" or "") .. (MemberParent and Member:GetFullName():sub(MemberParent == Root and #Root.Name + 2 or #Member.Name + 3) or "")
 							end
 						else
 							local UserdataString = Helpers.UserdataToString(Member)
@@ -2253,7 +2258,7 @@ ProxyMethods = setmetatable({
 			end,
 			
 			Unserialize = setfenv(function(Input, Parent, Links, IsDescendant) --Grouped with instance methods for ease of remembering
-				if Configurations.AssertArgumentTypes then Assert.ExpectArgumentType("Methods.Userdata.Instance.Unserialize", Input, "string, table", Parent, "nil, Instance") end
+				if Configurations.AssertArgumentTypes then Assert.ExpectArgumentType("Methods.Userdata.Instance.Unserialize", Input, "string, table", Parent, "nil, Instance", Links, "nil, table", IsDescendant, "nil, boolean") end
 				local Decoded = type(Input) == "string" and Services.HttpService:JSONDecode(Input) or type(Input) == "table" and Input or nil
 				local ClassName = Decoded.ClassName; Decoded.ClassName = nil
 				local Instance, Children = NewInstance(ClassName), Decoded.__children
@@ -2282,20 +2287,18 @@ ProxyMethods = setmetatable({
 				return Instance
 			end, {
 				Processor = setfenv(function(Instance, Member, MemberName, Children, Links)
-					if type(Member) == "string" and (Member:sub(1, 10) == "__children" or Member:sub(1, 8) == "__return") then
-						if Member:sub(1, 10) == "__children" then
-							Instance[MemberName] = Children[tonumber(Member:match("%d+"))]
-						else
+					if type(Member) == "string" and Member:find("%$%$") then
+						local SeparatorIndex = Member:find("%$%$"); local MemberIndex = SeparatorIndex + 2
+						if Member:sub(1, SeparatorIndex - 1) == "__children" then
+							Instance[MemberName] = Children[tonumber(Member:sub(MemberIndex))]
+						elseif Member:sub(1, SeparatorIndex - 1) == "__return" then
 							local LinksSize = #Links
-							Links[LinksSize + 1] = Instance; Links[LinksSize + 2] = MemberName; Links[LinksSize + 3] = Member:match("%b[]"):sub(2, -2)
+							Links[LinksSize + 1] = Instance; Links[LinksSize + 2] = MemberName; Links[LinksSize + 3] = Member:sub(MemberIndex)
+						else
+							Instance[MemberName] = UserdataConstantStorage.Decoders[Member:sub(1, SeparatorIndex - 1)](Member:sub(MemberIndex))
 						end
 					else
-						if type(Member) == "string" and Member:find("%$%$") then
-							local SeparatorIndex = Member:find("%$%$")
-							Instance[MemberName] = UserdataConstantStorage.Decoders[Member:sub(1, SeparatorIndex - 1)](Member:sub(SeparatorIndex + 2))
-						else
-							Instance[MemberName] = Member
-						end
+						Instance[MemberName] = Member
 					end
 				end, {UserdataConstantStorage = Storage.Constant.Userdata}),
 				
