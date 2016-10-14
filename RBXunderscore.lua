@@ -79,8 +79,7 @@ local Storage, Capabilities = {
 			Instances = setmetatable({}, {
 				__index = function(Self, ClassName)
 					local Successful, Instance = pcall(NewInstance, ClassName)
-					if Successful then Self[ClassName] = Instance; return Instance end
-					return nil
+					if Successful then Self[ClassName] = Instance; return Instance end; return nil
 				end
 			}),
 			
@@ -280,7 +279,7 @@ local Storage, Capabilities = {
 			NaN = math_abs(0 / 0)
 		}
 	},
-	Persistent = {Instance = {PropertyWritabilityMap = {ClassName = {Property = true}}}},
+	Persistent = {Instance = {PropertyWritabilityMap = {}}},
 	Temporary = {}
 }, setmetatable({}, {__index = {
 	CanUseLoadstring = pcall(loadstring, ""),
@@ -2527,6 +2526,7 @@ _ = Functions.Create.Proxy({
 	}, {__index = ProxyMethods}),
 	__newindex = function() Log.Error(nil, "You are not allowed to make changes to the framework during runtime.") end,
 	__tostring = function() return "RBXunderscore Library/Object Wrapper" end,
+	__len = function() return "internal-dev" end,
 	__metatable = "The metatable is locked"
 })
 
