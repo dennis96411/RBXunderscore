@@ -1,5 +1,5 @@
 --[[
-	RBXunderscore Library/Object Wrapper by dennis96411 (Updated 10/13/2016 20:25 EST)
+	RBXunderscore Library/Object Wrapper by dennis96411 (Updated 10/14/2016 14:50 EST)
 	Optimizations considered:
 	* http://www.lua.org/gems/sample.pdf
 	* https://stackoverflow.com/questions/154672/what-can-i-do-to-increase-the-performance-of-a-lua-program/#12865406
@@ -11,7 +11,8 @@
 local Configurations = {
 	AssertArgumentTypes = false, --Assert correct argument types; disable for less overhead but errors will be less verbose
 	ContinueOnError = false, --Continue on non-fatal protected function call errors
-	DirectlyModifyTables = false --Directly modify wrapped tables' original object
+	DirectlyModifyTables = false, --Directly modify wrapped tables' original object
+	HTTPRequest = {Timeout = 5} --Options for HTTPRequests
 }
 
 --Predeclare references
@@ -30,12 +31,12 @@ local
 	--Table functions
 	table_concat, table_insert, table_remove, table_sort,
 	--Coroutine functions
-	coroutine_resume, coroutine_running, coroutine_wrap, coroutine_yield,
+	coroutine_create, coroutine_resume, coroutine_running, coroutine_wrap, coroutine_yield,
 	--Other functions
 	assert, debug_traceback, delay, error, getfenv, getmetatable, ipairs, LoadLibrary, loadstring, newproxy, next, pairs, pcall, print, rawget, rawset, select, setfenv, setmetatable, spawn, string_dump, tick, tonumber, tostring, type, unpack, wait, warn, noop, --Empty function body
 	NOPE --Replacement for error in protected calls; avoids global environment table lookup and function call
 		=
-	script, game, Workspace, Enum, Axes, BrickColor, CellId, CFrame, Color3, ColorSequence, ColorSequenceKeypoint, Faces, Instance, NumberRange, NumberSequence, NumberSequenceKeypoint, PhysicalProperties, Ray, Rect, Region3, Region3int16, UDim, UDim2, Vector2, Vector2int16, Vector3, Vector3int16, Axes.new, BrickColor.new, CellId.new, CFrame.new, Color3.new, ColorSequence.new, ColorSequenceKeypoint.new, Faces.new, Instance.new, NumberRange.new, NumberSequence.new, NumberSequenceKeypoint.new, PhysicalProperties.new,  Ray.new, Rect.new, Region3.new, Region3int16.new, UDim.new, UDim2.new, Vector2.new, Vector2int16.new, Vector3.new, Vector3int16.new, math.abs, math.atan, math.atan2, math.ceil, math.floor, math.huge, math.log, math.log10, math.max, math.min, math.pi, math.random, table.concat, table.insert, table.remove, table.sort, coroutine.resume, coroutine.running, coroutine.wrap, coroutine.yield, assert, debug.traceback, delay, error, getfenv, getmetatable, ipairs, LoadLibrary, loadstring, newproxy, next, pairs, pcall, print, rawget, rawset, select, setfenv, setmetatable, spawn, string.dump, tick, tonumber, tostring, type, unpack, wait, warn, function() end
+	script, game, Workspace, Enum, Axes, BrickColor, CellId, CFrame, Color3, ColorSequence, ColorSequenceKeypoint, Faces, Instance, NumberRange, NumberSequence, NumberSequenceKeypoint, PhysicalProperties, Ray, Rect, Region3, Region3int16, UDim, UDim2, Vector2, Vector2int16, Vector3, Vector3int16, Axes.new, BrickColor.new, CellId.new, CFrame.new, Color3.new, ColorSequence.new, ColorSequenceKeypoint.new, Faces.new, Instance.new, NumberRange.new, NumberSequence.new, NumberSequenceKeypoint.new, PhysicalProperties.new,  Ray.new, Rect.new, Region3.new, Region3int16.new, UDim.new, UDim2.new, Vector2.new, Vector2int16.new, Vector3.new, Vector3int16.new, math.abs, math.atan, math.atan2, math.ceil, math.floor, math.huge, math.log, math.log10, math.max, math.min, math.pi, math.random, table.concat, table.insert, table.remove, table.sort, coroutine.create, coroutine.resume, coroutine.running, coroutine.wrap, coroutine.yield, assert, debug.traceback, delay, error, getfenv, getmetatable, ipairs, LoadLibrary, loadstring, newproxy, next, pairs, pcall, print, rawget, rawset, select, setfenv, setmetatable, spawn, string.dump, tick, tonumber, tostring, type, unpack, wait, warn, function() end
 
 --Helper functions for minimizing unnecessary closure generation during protected calls
 local ProtectedCallHelpers = {
@@ -118,7 +119,7 @@ local Services, Storage, Capabilities = setmetatable({}, {
 				EnumerationItem = function(Object) if Object ~= Enum[tostring(Object):sub(6, -#Object.Name - 2)][Object.Name] then NOPE() end end,
 				Event = setfenv(function(Object) Connector(Object, noop):disconnect() end, {Connector = game.AncestryChanged.connect}),
 				Faces = setfenv(function(Object) Dummy.Faces = Object end, {Dummy = NewInstance("Handles")}),
-				Instance = function(Object) if not pcall(game.IsA, Object, "Instance") and Object ~= game:FindService(pcall(ProtectedCallHelpers.Get, Object, "ClassName") and #Object.ClassName > 0 and Object.ClassName or tostring(Object)) then NOPE() end end, --Handles odd services such as CSGDictionaryService
+				Instance = function(Object) local ClassName = Object.ClassName; if not pcall(game.IsA, Object, "Instance") and Object ~= game:FindService(pcall(ProtectedCallHelpers.Get, Object, "ClassName") and #ClassName > 0 and ClassName or tostring(Object)) then NOPE() end end, --Handles odd services such as CSGDictionaryService
 				NumberRange = setfenv(function(Object) Dummy.Speed = Object end, {Dummy = NewInstance("ParticleEmitter")}),
 				NumberSequence = setfenv(function(Object) Dummy.Transparency = Object end, {Dummy = NewInstance("ParticleEmitter")}),
 				NumberSequenceKeypoint = function(Object) if select(2, pcall(NewNumberSequence, {Object})) == "NumberSequence ctor: expected 'NumberSequenceKeypoint' at index 1" then NOPE() end end,
@@ -275,7 +276,7 @@ for __, Instance in next, game:GetChildren() do --Cache services already under t
 	pcall(function() return Services[tostring(Instance)] or Services[Instance.ClassName] end)
 end
 
---Library functions
+--Libraries and proxy methods
 Libraries = setmetatable({
 	string = {
 		CamelCase = function(String, Template) --Use "x" or "X" to indicate words; example: x_X, XX, x-__-X
@@ -291,6 +292,11 @@ Libraries = setmetatable({
 				Separator = Template:match("%W+")
 			end
 			return table_concat(Words, Separator)
+		end,
+		
+		Capitalize = function(String)
+			if Configurations.AssertArgumentTypes then Assert.ExpectArgumentType("Libraries.String.Capitalize", String, "string") end
+			return String:sub(1, 1):upper() .. String:sub(2)
 		end,
 		
 		CharacterAt = function(String, Index)
@@ -1979,6 +1985,10 @@ Libraries = setmetatable({
 			end
 		},
 		
+		UDim2 = {
+			
+		},
+		
 		Proxy = {
 			Clone = function(Proxy)
 				if Configurations.AssertArgumentTypes then Assert.ExpectArgumentType("Libraries.Userdata.Proxy.Clone", Proxy, "proxy") end
@@ -2073,25 +2083,36 @@ Functions = setmetatable({
 	},
 	
 	GUI = {
-		CreateMessageDialog = function(Parent, Title, Message, Style, Buttons) --Styles: Notify, Confirm, Error
+		CreateMessageDialog = setfenv(function(Parent, Title, Message, Style, Buttons) --Styles: Notify, Confirm, Error
 			if Configurations.AssertArgumentTypes then Assert.ExpectArgumentType("Functions.GUI.CreateMessageDialog", Parent, "nil, Instance", Title, "string", Message, "string", Style, "string", Buttons, "table") end
-			local Parent, Dialog, FromOffset = Parent and (Parent:IsA("GuiBase") and Parent or Functions.Create.Instance("ScreenGui", {Name = "_MessageDialog", Parent = Parent})) or nil, Style and Libraries.RbxGui.CreateStyledMessageDialog(Title, Message, Style, Buttons) or Libraries.RbxGui.CreateMessageDialog(Title, Message, Buttons), 50
+			local Parent, Dialog, FromOffset = Parent and (Parent:IsA("GuiBase") and Parent or Functions.Create.Instance("ScreenGui", {Name = "RBXunderscore_MessageDialog", Parent = Parent})) or nil, Style and Libraries.RbxGui.CreateStyledMessageDialog(Title, Message, Style, Buttons) or Libraries.RbxGui.CreateMessageDialog(Title, Message, Buttons), 50
 			local DefaultPosition, DefaultSize = Dialog.Position, Dialog.Size
-			Libraries.userdata.Instance.SetProperties(Dialog, {
-				Parent = Parent,
-				Draggable = true,
-				ClipsDescendants = true,
-				Size = NewUDim2(0, 0, 0, 0),
-				Position = NewUDim2(0.5, 0, 0.5, 0)
-			})
+			InstanceSetProperties(Dialog, {Parent = Parent, Draggable = true, ClipsDescendants = true, Size = NewUDim2(), Position = NewUDim2(0.5, 0, 0.5, 0)})
 			for Index = 1, #Buttons do
-				getfenv(Buttons[Index].Function).Dialog = setmetatable({
-					Close = coroutine_wrap(function()
-						Dialog:TweenSizeAndPosition(NewUDim2(0, 0, 0, 0), NewUDim2(Dialog.Position.X.Scale + (Dialog.Size.X.Scale * 0.5), Dialog.Position.X.Offset + (Dialog.Size.X.Offset * 0.5), Dialog.Position.Y.Scale + (Dialog.Size.Y.Scale * 0.5), Dialog.Position.Y.Offset + (Dialog.Size.Y.Offset * 0.5)), "Out", "Quart", 0.25, true)
-						repeat wait() until Dialog.AbsoluteSize.X == 0 and Dialog.AbsoluteSize.Y == 0
-						(Dialog.Parent.Name == "RBXunderscore_MessageDialog" and Dialog.Parent or Dialog):Destroy()
-					end)
-				}, {
+				getfenv(Buttons[Index].Function).Dialog = setmetatable({}, {
+					__index = setmetatable({
+						Close = function(Instantaneous)
+							if not Instantaneous then
+								local XPosition, YPosition, XSize, YSize = Dialog.Position.X, Dialog.Position.Y, Dialog.Size.X, Dialog.Size.Y
+								Dialog:TweenSizeAndPosition(NewUDim2(), NewUDim2(XPosition.Scale + XSize.Scale * 0.5, XPosition.Offset + XSize.Offset * 0.5, YPosition.Scale + YSize.Scale * 0.5, YPosition.Offset + YSize.Offset * 0.5), "Out", "Quart", 0.25)
+								repeat wait() until Dialog.AbsoluteSize.X == 0 and Dialog.AbsoluteSize.Y == 0
+							end
+							(Dialog.Parent.Name == "RBXunderscore_MessageDialog" and Dialog.Parent or Dialog):Destroy()
+						end,
+						
+						Reposition = function(Position, Time)
+							Dialog:TweenPosition(Position, "Out", "Quart", Time or 0.25, true)
+						end,
+						
+						Resize = function(Size, Time)
+							Dialog:TweenSize(Size, "Out", "Quart", Time or 0.25, true)
+						end,
+						
+						ResizeAndCenter = function(Size, Time)
+							local XPosition, YPosition, XSize, YSize = Dialog.Position.X, Dialog.Position.Y, Dialog.Size.X, Dialog.Size.Y
+							Dialog:TweenSizeAndPosition(Size, NewUDim2(XPosition.Scale + Size.X.Scale * 0.5, XPosition.Offset + Size.X.Offset * 0.5, YPosition.Scale + Size.Y.Scale * 0.5, YPosition.Offset + Size.Y.Offset * 0.5), "Out", "Quart", Time or 0.25, true)
+						end
+					}, {__index = Dialog}),
 					__newindex = noop,
 					__metatable = "The metatable is locked"
 				})
@@ -2099,7 +2120,7 @@ Functions = setmetatable({
 			Functions.GUI.ModifyZIndex(Dialog, 10, true)
 			Dialog:TweenSizeAndPosition(DefaultSize, DefaultPosition, "Out", "Quart", 0.25, true)
 			return Dialog
-		end,
+		end, {InstanceSetProperties = Libraries.userdata.Instance.SetProperties}),
 		
 		ModifyZIndex = function(Parent, Level, HardSet)
 			if Configurations.AssertArgumentTypes then Assert.ExpectArgumentType("Functions.GUI.ModifyZIndex", Parent, "instance", Level, "integer", HardSet, "nil, boolean") end
@@ -2107,9 +2128,7 @@ Functions = setmetatable({
 			pcall(ProtectedCallHelpers.Set, Parent, "ZIndex", ZIndex)
 			for Index = 1, #Children do
 				local Child = Children[Index]
-				if Child:IsA("GuiObject") then
-					Child.ZIndex = HardSet and Child.ZIndex + ZIndex or ZIndex
-				end
+				if Child:IsA("GuiObject") then Child.ZIndex = HardSet and Child.ZIndex + ZIndex or ZIndex end
 			end
 		end
 	},
@@ -2117,53 +2136,55 @@ Functions = setmetatable({
 	HTTPRequest = {
 		New = function(URL, Options)
 			--Methods: Send, Abort
-			--Properties: URL, RequestType, Data, DataType (POST), EncodeData (POST), CompressData (POST), Cache (GET), Response, Status, Timeout
+			--Properties: URL, RequestType, Data, DataType (POST), EncodeData (POST), CompressData (POST), Cache (GET), Response, Status, Timeout, Asynchronous
 			--Events: Success, Failure, StatusChange, Timeout
 			--Statuses: 
 			if Configurations.AssertArgumentTypes then Assert.ExpectArgumentType("HTTPRequest.New", URL, "string", Options, "nil, table") end
+			if not Options then Options = {} end
 			local Properties, Events, Statuses, Internal = {
-				URL = Services.HttpService:UrlEncode(URL),
+				URL = URL,--Services.HttpService:UrlEncode(URL),
 				RequestType = Options.RequestType and Options.RequestType:upper() or "GET",
 				Data = type(Options.Data) == "table" and Services.HttpService:JSONEncode(Options.Data) or Options.Data,
 				DataType = Options.DataType,
 				Encode = Options.Encode,
 				Compress = Options.Compress,
 				Cache = Options.Cache,
+				Asynchronous = Options.Asynchronous,
 				Timeout = Options.Timeout or 5,
 				Status = "uninitialized",
 				StatusCode = 0
-			}, Options.Events and {
-				Success = Options.Events.Success,
-				Failure = Options.Events.Failure,
-				StatusChange = Options.Events.StatusChange,
-				OnTimeout = Options.Events.Timeout
-			} or nil, {Time = {}}, {}
+			}, Options.Events or {}, {Time = {}}, {}
 			return Functions.Create.Proxy({
 				__index = setmetatable({
 					Properties = Properties,
 					Events = Events
 				}, {
 					__index = {
-						Send = coroutine_wrap(function()
-							local StartTime, Timer, Response = tick()
-							Timer = Services.RunService.Stepped:connect(function()
-								local Time = tick();
-								
-							end)
-							if Properties.RequestType == "GET" then
-								Response = Services.HttpService:GetAsync(Properties.URL, not Properties.Cache);
-							elseif Properties.RequestType == "POST" then
-								Response = Services.HttpService:PostAsync(Properties.URL, Properties.Data, Properties.DataType, Properties.Compress)
+						Send = setfenv(function(Asynchronous)
+							if Properties.Asynchronous or Asynchronous then
+								coroutine_resume(coroutine_create(MakeRequest))
 							else
-								
+								pcall(MakeRequest)
 							end
-							Timer:disconnect()
-							if not Internal.Aborted then
-								--Got response
-								Properties.Response = Response
-								Properties.Completed = true
+						end, {
+							MakeRequest = function()
+								local Response
+								if Properties.RequestType == "GET" then
+									Response = Services.HttpService:GetAsync(Properties.URL, not Properties.Cache);
+								elseif Properties.RequestType == "POST" then
+									Response = Services.HttpService:PostAsync(Properties.URL, Properties.Data, Properties.DataType, Properties.Compress)
+								end
+								if Events.StatusChange then Events.StatusChange(Properties.StatusCode) end
+								if Internal.Aborted then
+									
+								else
+									Properties.Status = "completed"
+									Properties.StatusCode = 200
+									Properties.Response = Response
+									if Events.Success then Events.Success(Response) end
+								end
 							end
-						end),
+						}),
 						
 						Abort = function()
 							Internal.Aborted = true
@@ -2172,37 +2193,28 @@ Functions = setmetatable({
 						end
 					}
 				}),
-				
-				__newindex = function()
-					
-				end,
-				
-				__len = function()
-					
-				end,
-				
 				__metatable = "The metatable is locked"
 			})
 		end,
 		
 		Get = function(URL, NoCache)
+			if Configurations.AssertArgumentTypes then Assert.ExpectArgumentType("HTTPRequest.Get", URL, "string", NoCache, "nil, boolean") end
 			return Services.HttpService:GetAsync(URL, NoCache)
 		end,
 		
-		GetAsync = function(URL, NoCache, Callback)
-			
+		GetAsync = function(URL, Callback, NoCache)
+			if Configurations.AssertArgumentTypes then Assert.ExpectArgumentType("HTTPRequest.GetAsync", URL, "string", Callback, "function", NoCache, "nil, boolean") end
+			return coroutine_wrap(function() Callback(Services.HttpService:GetAsync(URL, NoCache)) end)()
 		end,
 		
-		Post = function(URL, Data, ContentType, CompressData)
-			return Services.HttpService:PostAsync(URL, type(Data) ~= "string" and Services.HttpService:JSONEncode(Data) or Data, ContentType, CompressData)
+		Post = function(URL, Data, ContentType, Compress)
+			if Configurations.AssertArgumentTypes then Assert.ExpectArgumentType("HTTPRequest.Post", URL, "string", Data, "string, table", ContentType, "nil, string", Compress, "nil, boolean") end
+			return Services.HttpService:PostAsync(URL, type(Data) == "string" and Data or Services.HttpService:JSONEncode(Data), ContentType, Compress)
 		end,
 		
-		PostAsync = function(URL, Data, ContentType, CompressData, Callback)
-			
-		end,
-		
-		SetDefaultOptions = function(Options)
-			
+		PostAsync = function(URL, Data, Callback, ContentType, CompressData)
+			if Configurations.AssertArgumentTypes then Assert.ExpectArgumentType("HTTPRequest.PostAsync", URL, "string", Data, "string, table", Callback, "function", ContentType, "nil, string", Compress, "nil, boolean") end
+			return coroutine_wrap(function() Callback(Services.HttpService:PostAsync(URL, type(Data) == "string" and Data or Services.HttpService:JSONEncode(Data), ContentType, Compress)) end)()
 		end
 	},
 	
