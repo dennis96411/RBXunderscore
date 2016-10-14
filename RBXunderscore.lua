@@ -2199,7 +2199,7 @@ ProxyMethods = setmetatable({
 				Assert("Methods.Userdata.Instance.Serialize", pcall(NewInstance, Instance.ClassName), "The instance \"" .. Instance.Name .. "\" of class \"" .. Instance.ClassName .. "\" is not creatable!")
 				Instance.Archivable = true; Instance = Instance:Clone(); if Instance.ClassName == "Model" then Instance:MakeJoints() end --Clone root before serialization to avoid unwanted modifications on original objects
 				local Children = IncludeChildren and Instance:GetChildren() or nil; if not Root then Root = Instance end
-				local Properties, Output = ProxyMethods.userdata.Instance.GetAllMembers(Instance, "Properties"), {ClassName = Instance.ClassName, __children = Children} --ClassName won't be serialized because it is read-only
+				local Properties, Output = ProxyMethods.userdata.Instance.GetAllMembers(Instance, "Properties"), {ClassName = Instance.ClassName, __children = Children} --ClassName won't be serialized because it is read-only, so we have to put it in manually
 				local Processor, IsInstancePropertyReadOnly, Warn, Helpers = Processor, ProxyMethods.userdata.Instance.IsPropertyReadOnly, Log.Warn, {
 					TableIndexOf = ProxyMethods.table.IndexOf,
 					UserdataToString = ProxyMethods.userdata.ToString
@@ -2224,7 +2224,18 @@ ProxyMethods = setmetatable({
 				else
 					Output.__children = nil
 				end
-				return ReturnAsTable and Output or Services.HttpService:JSONEncode(Output)
+				if ReturnAsTable then
+					return Output
+				else
+					local Successful, Encoded = pcall(Services.HttpService.JSONEncode, Services.HttpService, Output)
+					if Successful then
+						return Encoded
+					else
+						Warn("Methods.Userdata.Instance.Serialize", "HttpService.JSONEncode has failed to encode the serialized data. Using RbxUtility.EncodeJSON instead.")
+						return Libraries.RbxUtility.EncodeJSON(Output)
+					end
+				end
+				--return ReturnAsTable and Output or Libraries.RbxUtility.EncodeJSON(Output)--Services.HttpService:JSONEncode(Output)
 			end, {
 				Processor = setfenv(function(Output, Instance, MemberName, Root, Children, Helpers)
 					local Member = Instance[MemberName]; local MemberType = type(Member)
@@ -2240,7 +2251,7 @@ ProxyMethods = setmetatable({
 						else
 							local UserdataString = Helpers.UserdataToString(Member)
 							local OpeningBracketIndex = UserdataString:find("%[")
-							Output[MemberName] = UserdataString:sub(1, OpeningBracketIndex - 1) .. "$$" .. UserdataString:sub(OpeningBracketIndex + 1, -2) --"__$" .. Helpers.UserdataToString(Member)
+							Output[MemberName] = UserdataString:sub(1, OpeningBracketIndex - 1) .. "$$" .. UserdataString:sub(OpeningBracketIndex + 1, -2)
 						end
 					else
 						Output[MemberName] = Member
@@ -2259,7 +2270,7 @@ ProxyMethods = setmetatable({
 			
 			Unserialize = setfenv(function(Input, Parent, Links, IsDescendant) --Grouped with instance methods for ease of remembering
 				if Configurations.AssertArgumentTypes then Assert.ExpectArgumentType("Methods.Userdata.Instance.Unserialize", Input, "string, table", Parent, "nil, Instance", Links, "nil, table", IsDescendant, "nil, boolean") end
-				local Decoded = type(Input) == "string" and Services.HttpService:JSONDecode(Input) or type(Input) == "table" and Input or nil
+				local Decoded = type(Input) == "string" and --[[Libraries.RbxUtility.DecodeJSON(Input)]]Services.HttpService:JSONDecode(Input) or Input
 				local ClassName = Decoded.ClassName; Decoded.ClassName = nil
 				local Instance, Children = NewInstance(ClassName), Decoded.__children
 				local Processor, Warn, Helpers = Processor, Log.Warn
