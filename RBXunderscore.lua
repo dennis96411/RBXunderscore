@@ -2524,7 +2524,7 @@ _ = Functions.Create.Proxy({
 			__metatable = "The metatable is locked"
 		})
 	}, {__index = ProxyMethods}),
-	__newindex = function() Log.Error(nil, "You are not allowed to make changes to the framework during runtime.") end,
+	__newindex = function() Log.Error(nil, "You are not allowed to make changes to the library during runtime.") end,
 	__tostring = function() return "RBXunderscore Library/Object Wrapper" end,
 	__len = function() return "internal-dev" end,
 	__metatable = "The metatable is locked"
