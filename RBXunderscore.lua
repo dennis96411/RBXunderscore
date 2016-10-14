@@ -2105,53 +2105,41 @@ ProxyMethods = setmetatable({
 			end,
 			
 			GetAllMembers = function(Instance, Type, NoCache)
-				if Configurations.AssertArgumentTypes then Assert.ExpectArgumentType("Methods.Userdata.Instance.GetAllMembers", Instance, "instance", Type, "nil, string") end
-				local Entries, EntriesSize = {}, 0
-				if Type then
-					local TypeMembers = Storage.Constant.Instance["All" .. Type]
-					if TypeMembers then
-						local ClassName, PersistentInstanceStorage, InstanceHasProperty = Instance.ClassName, Storage.Persistent.Instance, ProxyMethods.userdata.Instance.HasProperty
-						local Cache = PersistentInstanceStorage[ClassName]
-						if not Cache then
-							Cache = {}; PersistentInstanceStorage[ClassName] = Cache
-						elseif not NoCache and Cache[Type] then
-							--print("Cache of", Type, "for", ClassName, "found!")
-							return Cache[Type]
-						end
-						if Type == "Members" then
-							for Index = 1, TypeMembers.__size do --#TypeMembers
-								local Name = TypeMembers[Index]
-								if Instance:IsA(Name) then
-									EntriesSize = EntriesSize + 1; Entries[EntriesSize] = Name
-								end
-							end
-						elseif Type == "Properties" then
-							for Index = 1, TypeMembers.__size do --#TypeMembers
-								local Name = TypeMembers[Index]
-								if InstanceHasProperty(Instance, Name) then
-									EntriesSize = EntriesSize + 1; Entries[EntriesSize] = Name
-								end
-							end
-						else
-							local GetMember = ProtectedCallHelpers.Get
-							for Index = 1, TypeMembers.__size do --#TypeMembers
-								local Name = TypeMembers[Index]
-								if pcall(GetMember, Instance, Name) then
-									EntriesSize = EntriesSize + 1; Entries[EntriesSize] = Name
-								end
-							end
-						end
-						Cache[Type] = Entries
+				if Configurations.AssertArgumentTypes then Assert.ExpectArgumentType("Methods.Userdata.Instance.GetAllMembers", Instance, "instance", Type, "string") end
+				local Entries, EntriesSize, TypeMembers = {}, 0, Storage.Constant.Instance["All" .. Type]
+				if TypeMembers then
+					local ClassName, PersistentInstanceStorage, InstanceHasProperty = Instance.ClassName, Storage.Persistent.Instance, ProxyMethods.userdata.Instance.HasProperty
+					local Cache = PersistentInstanceStorage[ClassName]
+					if not Cache then
+						Cache = {}; PersistentInstanceStorage[ClassName] = Cache
+					elseif not NoCache and Cache[Type] then
+						--print("Cache of", Type, "for", ClassName, "found!")
+						return Cache[Type]
 					end
-				else
-					local InstanceGetAllMembers = ProxyMethods.userdata.Instance.GetAllMembers
-					for Type in next, Storage.Constant.Instance do
-						local Type = InstanceGetAllMembers(Instance, Type:sub(4))
-						for Index = 1, Type.__size do --#Type
-							EntriesSize = EntriesSize + 1; Entries[EntriesSize] = Type[Index]
+					if Type == "Classes" then
+						for Index = 1, TypeMembers.__size do --#TypeMembers
+							local Name = TypeMembers[Index]
+							if Instance:IsA(Name) then
+								EntriesSize = EntriesSize + 1; Entries[EntriesSize] = Name
+							end
+						end
+					elseif Type == "Properties" then
+						for Index = 1, TypeMembers.__size do --#TypeMembers
+							local Name = TypeMembers[Index]
+							if InstanceHasProperty(Instance, Name) then
+								EntriesSize = EntriesSize + 1; Entries[EntriesSize] = Name
+							end
+						end
+					else
+						local GetMember = ProtectedCallHelpers.Get
+						for Index = 1, TypeMembers.__size do --#TypeMembers
+							local Name = TypeMembers[Index]
+							if pcall(GetMember, Instance, Name) then
+								EntriesSize = EntriesSize + 1; Entries[EntriesSize] = Name
+							end
 						end
 					end
-					table_sort(Entries)
+					Cache[Type] = Entries
 				end
 				return Entries
 			end,
