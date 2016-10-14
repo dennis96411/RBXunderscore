@@ -14,7 +14,7 @@ This is essentially an object wrapper that provides functions and methods for di
     * Output: Table[0x1723C920]{Instance[Terrain], Instance[Camera], Instance[BasePlate \<Part\>]}
 
 # Why did you create this?
-I liked how versatile JavaScript is. Everything had methods and made life a lot easier. I'm attempting to copy some similar functionalities over from JavaScript.
+Initially, I created this to supplement the making of another project. As the project progressed, I learned a lot about optimizations in Lua, along with complex functionalities. I had a lot of fun during this learning experience.
 
 # How do I use this?
 Simple. Just copy the content of the RBXunderscore.lua file into a ModuleScript instance. Then, in the script you would like to use this with, put <b>_ = require(--location of script--)</b> at the top. So for example, if I put this ModuleScript (named RBXunderscore) in game.ServerScriptService, I would put <b>_ = require(game.ServerScriptService.RBXunderscore)</b> at the top of my script.
