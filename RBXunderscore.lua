@@ -2312,7 +2312,7 @@ ProxyMethods = setmetatable({
 					end
 				end, {UserdataConstantStorage = Storage.Constant.Userdata}),
 				
-				LinksProcessor = function(Instance, Links) --"!" = root, "" = parent, "!a" == root.a
+				LinksProcessor = function(Instance, Links) --"!" = root, "!a" == root.a, "" = parent
 					local TableGetNest = ProxyMethods.table.GetNest
 					for Index = 1, #Links, 3 do
 						--print(_(Links[Index], Links[Index + 1], Links[Index + 2], #Links[Index + 2]))
@@ -2403,36 +2403,21 @@ setmetatable(Functions, {__index = ProxyMethods})
 
 --Shared metamethods for proxies; required for proper invocation of comparison metamethods (see http://www.lua.org/pil/13.2.html)
 local ProxySharedMetamethods = {
-	__eq = function(Object, EqualsTo)
-		Object, EqualsTo = InternalFunctions.GetUnwrappedObjects(Object, EqualsTo)
-		local Metamethod = InternalFunctions.GetProxyMethod(Object, "Equals")
-		if Metamethod then
-			return Metamethod(Object, EqualsTo)
-		else
-			return Object == EqualsTo
-		end
+	__eq = function(First, Second)
+		First, Second = InternalFunctions.GetUnwrappedObjects(First, Second)
+		local Metamethod = InternalFunctions.GetProxyMethod(First, "Equals")
+		if Metamethod then return Metamethod(First, Second) end; return First == Second
 	end,
-	
-	__lt = function(Object, CompareWith)
-		Object, CompareWith = InternalFunctions.GetUnwrappedObjects(Object, CompareWith)
-		local Metamethod = InternalFunctions.GetProxyMethod(Object, "IsLessThan")
-		if Metamethod then
-			return Metamethod(Object, CompareWith)
-		else
-			return Object < CompareWith
-		end
+	__lt = function(First, Second)
+		First, Second = InternalFunctions.GetUnwrappedObjects(First, Second)
+		local Metamethod = InternalFunctions.GetProxyMethod(First, "IsLessThan")
+		if Metamethod then return Metamethod(First, Second) end; return First < Second
 	end,
-	
-	__le = function(Object, CompareWith)
-		Object, CompareWith = InternalFunctions.GetUnwrappedObjects(Object, CompareWith)
-		local Metamethod = InternalFunctions.GetProxyMethod(Object, "IsLessThanOrEqualTo")
-		if Metamethod then
-			return Metamethod(Object, CompareWith)
-		else
-			return Object <= CompareWith
-		end
+	__le = function(First, Second)
+		First, Second = InternalFunctions.GetUnwrappedObjects(First, Second)
+		local Metamethod = InternalFunctions.GetProxyMethod(First, "IsLessThanOrEqualTo")
+		if Metamethod then return Metamethod(First, Second) end; return First <= Second
 	end,
-	
 	__metatable = "The metatable is locked"
 }
 
