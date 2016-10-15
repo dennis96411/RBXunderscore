@@ -12,6 +12,7 @@ local Configurations = {
 	AssertArgumentTypes = false, --Assert correct argument types; disable for less overhead but errors will be less verbose
 	ContinueOnError = false, --Continue on non-fatal protected function call errors
 	DirectlyModifyTables = false, --Directly modify wrapped tables' original object
+	ContentURLTestTimeout = 5, --The maximum amount of time to wait for a content URL test to return before considering it a failure
 	HTTPRequest = {Timeout = 5} --Options for HTTPRequests
 }
 
@@ -182,12 +183,12 @@ local Services, Storage, Capabilities = setmetatable({}, {
 				CFrame = function(String) return NewCFrame(unpack(Libraries.string.Split(String, ", "))) end,
 				Color3 = function(String) local Decoded = Libraries.string.Split(String, ", "); return NewColor3(Decoded[1], Decoded[2], Decoded[3]) end,
 				ColorSequence = function(String)
-					local Decoded, DecodedSize, StringSplit = {}, 0, Libraries.string.Split
+					local Decoded, DecodedSize, StringSplit = {true}, 0, Libraries.string.Split
 					for Keypoint in String:gmatch("%b[]") do
 						local Color3 = StringSplit(Keypoint:sub(2, -5), ", ")
 						DecodedSize = DecodedSize + 1; Decoded[DecodedSize] = NewColor3(Color3[1], Color3[2], Color3[3])
 					end
-					return NewColorSequence(unpack(Decoded))
+					return NewColorSequence(unpack(Decoded, 1, DecodedSize))
 				end,
 				Enumeration = function(String) return Enum[String] end,
 				EnumerationItem = function(String) return Libraries.table.GetNest(Enum, String) end,
@@ -198,11 +199,11 @@ local Services, Storage, Capabilities = setmetatable({}, {
 				end,
 				NumberRange = function(String) local Decoded = Libraries.string.Split(String, ", "); return NewNumberRange(Decoded[1], Decoded[2]) end,
 				NumberSequence = function(String)
-					local Keypoints, KeypointsSize, StringSplit = {}, 0, Libraries.string.Split
+					local Keypoints, KeypointsSize, StringSplit = {true}, 0, Libraries.string.Split
 					for Keypoint in String:gmatch("%d+[%.%d+]*: %b[]") do
 						KeypointsSize = KeypointsSize + 1; Keypoints[KeypointsSize] = NewNumberSequenceKeypoint(Keypoint:match("(%d+[%.%d+]*).-(%d+[%.%d+]*).-(%d+[%.%d+]*)"))
 					end
-					return NewColorSequence(unpack(Keypoints))
+					return NewColorSequence(unpack(Keypoints, 1, KeypointsSize))
 				end,
 				PhysicalProperties = function(String) local Decoded = Libraries.string.Split(String, ", "); return NewPhysicalProperties(Decoded[1], Decoded[2], Decoded[3], Decoded[4], Decoded[5]) end,
 				Ray = function(String)
@@ -377,16 +378,16 @@ Libraries = setmetatable({
 		IsContentURL = setfenv(function(String, Timeout)
 			if Configurations.AssertArgumentTypes then Assert.ExpectArgumentType("Libraries.String.IsContentURL", String, "string", Timeout, "nil, number") end
 			String = type(tonumber(String)) == "number" and "rbxassetid://" .. String or String:lower()
-			local ContentProvider, Timeout, IsInvalid, Connection = Services.ContentProvider, tick() + (String:sub(1, 9) == "rbxasset:" and 0.05 or Timeout or 5)
+			local ContentProvider, Timeout, IsInvalid, Connection = Services.ContentProvider, tick() + (String:sub(1, 9) == "rbxasset:" and 0.04 or Timeout or Configurations.ContentURLTestTimeout)
 			Connection = MessageOutEvent:connect(function(Message, Type)
-				if Type == Enum.MessageType.MessageError and Message == "ContentProvider:Preload() failed for " .. String:gsub("^rbxhttp:/", "http://www.roblox.com") then
+				if Type == MessageError and Message == "ContentProvider:Preload() failed for " .. String:gsub("^rbxhttp:/", "http://www.roblox.com") then
 					IsInvalid = true; Connection:disconnect()
 				end
 			end)
 			pcall(ContentProvider.Preload, ContentProvider, String)
 			repeat wait()--[[; print("[" .. String .. "] Queue size:", ContentProvider.RequestQueueSize, "| Invalid:", IsInvalid, "| Timed out:", tick() > Timeout)]] until ContentProvider.RequestQueueSize == 0 or IsInvalid or tick() > Timeout
 			return not IsInvalid
-		end, {MessageOutEvent = Services.LogService.MessageOut}),
+		end, {MessageOutEvent = Services.LogService.MessageOut, MessageError = Enum.MessageType.MessageError}),
 		
 		LastIndexOf = function(String, Pattern, MaximumIndex)
 			if Configurations.AssertArgumentTypes then Assert.ExpectArgumentType("Libraries.String.LastIndexOf", String, "string", Pattern, "string, number", MaximumIndex, "nil, integer") end
@@ -908,8 +909,7 @@ Libraries = setmetatable({
 						break
 					end
 				end
-				Path[PathSize] = nil
-				PathSize = PathSize - 1
+				Path[PathSize] = nil; PathSize = PathSize - 1
 			end
 			return Libraries.table.GetNest(Table, table_concat(Path, ".") or "") == Object and table_concat(Path, ".") or nil
 		end,
@@ -1229,13 +1229,9 @@ Libraries = setmetatable({
 			if Configurations.AssertArgumentTypes then Assert.ExpectArgumentType("Libraries.Table.Clear", Table, "table") end
 			local Check = math_random(); Table[1] = Check
 			if Table[1] == Check then
-				for Key in next, Table do
-					Table[Key] = nil
-				end
+				for Key in next, Table do Table[Key] = nil end
 			else --Change was intercepted by a metamethod
-				for Key in next, Table do
-					rawset(Table, Key, nil)
-				end
+				for Key in next, Table do rawset(Table, Key, nil) end
 			end
 			Table._ = 1; Table._ = nil --Attempt to force garbage collection
 			return Table
@@ -1279,15 +1275,12 @@ Libraries = setmetatable({
 			for Level in Path:gmatch("%.-[^%.]+") do
 				local Level, NewLevel = (Level:gsub("^%.", ""))
 				if type(LastLevel[Level]) ~= "table" then
-					NewLevel = {}
-					LastLevel[Level] = NewLevel
+					NewLevel = {}; LastLevel[Level] = NewLevel
 				end
 				LastLevel = NewLevel or LastLevel[Level]
 			end
 			if type(Content) == "table" then
-				for Key, Value in next, Content do
-					LastLevel[Key] = Value
-				end
+				for Key, Value in next, Content do LastLevel[Key] = Value end
 			elseif Content then
 				LastLevel[#LastLevel + 1] = Content
 			end
@@ -1378,7 +1371,7 @@ Libraries = setmetatable({
 			if Configurations.AssertArgumentTypes then Assert.ExpectArgumentType("Libraries.Table.Push", Table, "table") end
 			local Arguments, TableSize = {...}, #Table
 			for Index = 1, select("#", ...) do
-				TableSize = TableSize + 1; Table[TableSize] = Arguments[Index]
+				Table[TableSize + Index] = Arguments[Index]
 			end
 			return Table
 		end,
@@ -1403,9 +1396,7 @@ Libraries = setmetatable({
 					Table[LastUsedIndex] = Table[Key]
 				end
 			end
-			for Index = LastUsedIndex + 1, MaxIndex do
-				Table[Index] = nil
-			end
+			for Index = LastUsedIndex + 1, MaxIndex do Table[Index] = nil end
 			return Table
 		end,
 		
@@ -1804,20 +1795,29 @@ Libraries = setmetatable({
 			
 			IsPropertyReadOnly = setfenv(function(Instance, Property, NoCache)
 				if Configurations.AssertArgumentTypes then Assert.ExpectArgumentType("Libraries.Userdata.Instance.IsPropertyReadOnly", Instance, "instance", Property, "string") end
-				Assert("Libraries.Userdata.Instance.IsPropertyReadOnly", Libraries.userdata.Instance.HasProperty(Instance, Property), "\"" .. Property .. "\" is not a valid property of class \"" .. Instance.ClassName .. "\"!")
-				local Cache = PersistentInstanceStorage.PropertyWritabilityMap[Instance.ClassName]
-				if not Cache then
-					Cache = {}; PersistentInstanceStorage.PropertyWritabilityMap[Instance.ClassName] = Cache
-				elseif not NoCache and Cache[Property] ~= nil then
-					--print("Cache found!")
-					return not Cache[Property]
+				local ClassName = Instance.ClassName
+				Assert("Libraries.Userdata.Instance.IsPropertyReadOnly", Libraries.userdata.Instance.HasProperty(Instance, Property), "\"" .. Property .. "\" is not a valid property of class \"" .. ClassName .. "\"!")
+				local Cache, NoCacheProperties = PersistentInstanceStorage.PropertyWritabilityMap[ClassName], NoCacheProperties[ClassName]
+				local NoCache = NoCache or NoCacheProperties and NoCacheProperties[Property]
+				if not NoCache then
+					if not Cache then
+						Cache = {}; PersistentInstanceStorage.PropertyWritabilityMap[ClassName] = Cache
+					end
+					if Cache[Property] ~= nil then
+						--print("Cache found!")
+						return not Cache[Property]
+					end
 				end
 				if pcall(ProtectedCallHelpers.Get, Instance, Property) then
-					local IsWritable = Property == "Parent" or pcall(ProtectedCallHelpers.SetSelf, Instance, Property) or pcall(ProtectedCallHelpers.Set, DummyInstances[Instance.ClassName] or Instance, Property, Instance[Property])
-					Cache[Property] = IsWritable; return not IsWritable
+					local IsWritable = Property == "Parent" or pcall(ProtectedCallHelpers.SetSelf, Instance, Property) or pcall(ProtectedCallHelpers.Set, DummyInstances[ClassName], Property, Instance[Property])
+					if not NoCache then Cache[Property] = IsWritable end; return not IsWritable
 				end
 				return nil
-			end, {PersistentInstanceStorage = Storage.Persistent.Instance, DummyInstances = Storage.Constant.Userdata.DummyObjects.Instances}),
+			end, {
+				NoCacheProperties = {Sound = {RollOffMode = true}},
+				PersistentInstanceStorage = Storage.Persistent.Instance,
+				DummyInstances = Storage.Constant.Userdata.DummyObjects.Instances
+			}),
 			
 			RemoveAllChildren = setfenv(function(...)
 				if Configurations.AssertArgumentTypes then Assert.ExpectArgumentType("Libraries.Userdata.Instance.RemoveAllChildren", ({...})[1], "instance") end
@@ -1826,20 +1826,41 @@ Libraries = setmetatable({
 			
 			Serialize = setfenv(function(Instance, IncludeChildren, ReturnAsTable, Root)
 				if Configurations.AssertArgumentTypes then Assert.ExpectArgumentType("Libraries.Userdata.Instance.Serialize", Instance, "instance", IncludeChildren, "nil, boolean", ReturnAsTable, "nil, boolean", Root, "nil, instance") end
-				Assert("Libraries.Userdata.Instance.Serialize", pcall(NewInstance, Instance.ClassName), "The instance \"" .. Instance.Name .. "\" of class \"" .. Instance.ClassName .. "\" is not creatable!")
-				Instance.Archivable = true; Instance = Instance:Clone(); if Instance.ClassName == "Model" then Instance:MakeJoints() end --Clone root before serialization to avoid unwanted modifications on original objects
-				local Children = IncludeChildren and Instance:GetChildren() or nil; if not Root then Root = Instance end
-				local Properties, Output = Libraries.userdata.Instance.GetAllMembers(Instance, "Properties"), {ClassName = Instance.ClassName, __children = Children} --ClassName won't be serialized because it is read-only, so we have to put it in manually
-				local Processor, IsInstancePropertyReadOnly, Warn, Helpers = Processor, Libraries.userdata.Instance.IsPropertyReadOnly, Log.Warn, {
+				local ClassName = Instance.ClassName; Assert("Libraries.Userdata.Instance.Serialize", pcall(NewInstance, ClassName), "The instance \"" .. Instance.Name .. "\" of class \"" .. ClassName .. "\" is not creatable!")
+				Instance.Archivable = true; Instance = Instance:Clone(); if ClassName == "Model" then Instance:MakeJoints() end --Clone root before serialization to avoid unwanted modifications on original objects
+				local Properties, Children = Libraries.userdata.Instance.GetAllMembers(Instance, "Properties"), IncludeChildren and Instance:GetChildren() or nil; if not Root then Root = Instance end
+				local Output, Processor, InstanceTypeTest, IsInstancePropertyReadOnly, GetUserdataType, UserdataEncoders,--[[UserdataToString,]] TableIndexOf, Warn--[[, Helpers]] = {ClassName = ClassName, __children = Children}, Processor, InstanceTypeTest, Libraries.userdata.Instance.IsPropertyReadOnly, Libraries.userdata.GetUserdataType, UserdataEncoders,--[[Libraries.userdata.ToString,]] Libraries.table.IndexOf, Log.Warn--[[, {
 					TableIndexOf = Libraries.table.IndexOf,
 					UserdataToString = Libraries.userdata.ToString
-				}
+				}]]
 				for Index = 1, #Properties do
-					local MemberName = Properties[Index]
-					if IsInstancePropertyReadOnly(Instance, MemberName, true) == false then
-						local Successful, Error = pcall(Processor, Output, Instance, MemberName, Root, IncludeChildren and Children, Helpers)
+					local Property = Properties[Index]
+					if IsInstancePropertyReadOnly(Instance, Property) == false then
+						--[[local Successful, Error = pcall(Processor, Output, Instance, Property, Root, Children, Helpers)
 						if not Successful then
-							Warn("Libraries.Userdata.Instance.Serialize", "Unable to serialize property \"" .. MemberName .. "\" for instance \"" .. Instance.Name .. "\" of class \"" .. Instance.ClassName .. "\": " .. Error)
+							Warn("Libraries.Userdata.Instance.Serialize", "Unable to serialize property \"" .. Property .. "\" for instance \"" .. Instance.Name .. "\" of class \"" .. Instance.ClassName .. "\": " .. Error)
+						end]]
+						local Member = Instance[Property]
+						if type(Member) == "userdata" then
+							if pcall(InstanceTypeTest, Member) then
+								local MemberParent = Member.Parent
+								if MemberParent == Instance and Children then
+									Output[Property] = "__children$$" .. TableIndexOf(Children, Member)
+								else
+									local MemberName, MemberFullName = Member.Name, Member:GetFullName()
+									--print("Serializing", Property, "|", MemberFullName:sub(MemberParent == Root and #Root.Name + 2 or #MemberName + 3), "|", MemberParent)
+									--if (MemberParent == Root and "!" or "") .. (MemberParent and (MemberName == MemberFullName and MemberName or MemberFullName:sub(MemberParent == Root and #Root.Name + 2 or #MemberName + 3)) or "") == "lock Model" then error(table_concat(Libraries.table.Map({"Serializing", Property, "|", Member:GetFullName(), "|", MemberParent:GetFullName()}, tostring), " ")) end
+									Output[Property] = "__return$$" .. (MemberParent == Root and "!" or "") .. (MemberParent and (MemberParent == Root and MemberFullName:sub(MemberParent == Root and #Root.Name + 2 or #MemberName + 3) or MemberName) or "")
+								end
+							else
+								--[[local UserdataString = UserdataToString(Member)
+								local OpeningBracketIndex = UserdataString:find("%[")
+								Output[Property] = UserdataString:sub(1, OpeningBracketIndex - 1) .. "$$" .. UserdataString:sub(OpeningBracketIndex + 1, -2)]]
+								local UserdataType = GetUserdataType(Member)
+								Output[Property] = UserdataType .. "$$" .. UserdataEncoders[UserdataType](Member)
+							end
+						else
+							Output[Property] = Member
 						end
 					end
 				end
@@ -1854,39 +1875,30 @@ Libraries = setmetatable({
 				else
 					Output.__children = nil
 				end
-				if ReturnAsTable then
-					return Output
-				else
-					local Successful, Encoded = pcall(Services.HttpService.JSONEncode, Services.HttpService, Output)
-					if Successful then
-						return Encoded
-					else
-						Warn("Libraries.Userdata.Instance.Serialize", "HttpService.JSONEncode has failed to encode the serialized data. Using RbxUtility.EncodeJSON instead.")
-						return Libraries.RbxUtility.EncodeJSON(Output)
-					end
-				end
-				--return ReturnAsTable and Output or Libraries.RbxUtility.EncodeJSON(Output)--Services.HttpService:JSONEncode(Output)
+				return ReturnAsTable and Output or Libraries.table.EncodeJSON(Output)
 			end, {
-				Processor = setfenv(function(Output, Instance, MemberName, Root, Children, Helpers)
-					local Member = Instance[MemberName]
+				--[[Processor = setfenv(function(Output, Instance, Property, Root, Children, Helpers)
+					local Member = Instance[Property]
 					if type(Member) == "userdata" then
 						if pcall(InstanceTypeTest, Member) then
 							local MemberParent = Member.Parent
 							if MemberParent == Instance and Children then
-								Output[MemberName] = "__children$$" .. Helpers.TableIndexOf(Children, Member)
+								Output[Property] = "__children$$" .. Helpers.TableIndexOf(Children, Member)
 							else
-								--print("Serializing", MemberName, "|", Member:GetFullName():sub(MemberParent == Root and #Root.Name + 2 or #Member.Name + 3), "|", MemberParent)
-								Output[MemberName] = "__return$$" .. (MemberParent == Root and "!" or "") .. (MemberParent and Member:GetFullName():sub(MemberParent == Root and #Root.Name + 2 or #Member.Name + 3) or "")
+								--print("Serializing", Property, "|", Member:GetFullName():sub(MemberParent == Root and #Root.Name + 2 or #Member.Name + 3), "|", MemberParent)
+								Output[Property] = "__return$$" .. (MemberParent == Root and "!" or "") .. (MemberParent and (Member:GetFullName():sub(MemberParent == Root and #Root.Name + 2 or #Member.Name + 3) or "")
 							end
 						else
 							local UserdataString = Helpers.UserdataToString(Member)
 							local OpeningBracketIndex = UserdataString:find("%[")
-							Output[MemberName] = UserdataString:sub(1, OpeningBracketIndex - 1) .. "$$" .. UserdataString:sub(OpeningBracketIndex + 1, -2)
+							Output[Property] = UserdataString:sub(1, OpeningBracketIndex - 1) .. "$$" .. UserdataString:sub(OpeningBracketIndex + 1, -2)
 						end
 					else
-						Output[MemberName] = Member
+						Output[Property] = Member
 					end
-				end, {InstanceTypeTest = Storage.Constant.Userdata.TypeTests.Instance})
+				end, {InstanceTypeTest = Storage.Constant.Userdata.TypeTests.Instance}),]]
+				InstanceTypeTest = Storage.Constant.Userdata.TypeTests.Instance,
+				UserdataEncoders = Storage.Constant.Userdata.Encoders,
 			}),
 			
 			SetProperties = function(Instance, Properties)
@@ -1900,11 +1912,9 @@ Libraries = setmetatable({
 			
 			Unserialize = setfenv(function(Input, Parent, Links, IsDescendant) --Grouped with instance methods for ease of remembering
 				if Configurations.AssertArgumentTypes then Assert.ExpectArgumentType("Libraries.Userdata.Instance.Unserialize", Input, "string, table", Parent, "nil, Instance", Links, "nil, table", IsDescendant, "nil, boolean") end
-				local Decoded = type(Input) == "string" and --[[Libraries.RbxUtility.DecodeJSON(Input)]]Services.HttpService:JSONDecode(Input) or Input
-				local ClassName = Decoded.ClassName; Decoded.ClassName = nil
-				local Instance, Children = NewInstance(ClassName), Decoded.__children
-				local Processor, Warn, Helpers = Processor, Log.Warn
-				if not IsDescendant then Links = {} end
+				local Decoded = type(Input) == "string" and Libraries.string.DecodeJSON(Input) or Input
+				local ClassName = Decoded.ClassName; Decoded.ClassName = nil; if not IsDescendant then Links = {} end
+				local Instance, Children, Processor, Warn = NewInstance(ClassName), Decoded.__children, Processor, Log.Warn
 				if Children then
 					local UnserializeInstance = Libraries.userdata.Instance.Unserialize
 					for Index = 1, #Children do
@@ -1912,10 +1922,10 @@ Libraries = setmetatable({
 					end
 					Decoded.__children = nil
 				end
-				for MemberName, Member in next, Decoded do
-					local Successful, Error = pcall(Processor, Instance, Member, MemberName, Children, Links)
+				for Property, Member in next, Decoded do
+					local Successful, Error = pcall(Processor, Instance, Member, Property, Children, Links)
 					if not Successful then
-						Warn("Libraries.Userdata.Instance.Unserialize", "Unable to set property \"" .. MemberName .. "\" for instance \"" .. Decoded.Name .. "\" of class \"" .. ClassName .. "\": " .. Error)
+						Warn("Libraries.Userdata.Instance.Unserialize", "Unable to set property \"" .. Property .. "\" for instance \"" .. Decoded.Name .. "\" of class \"" .. ClassName .. "\": " .. Error)
 					end
 				end
 				if not IsDescendant then
@@ -1927,26 +1937,28 @@ Libraries = setmetatable({
 				Instance.Parent = Parent; pcall(ProtectedCallHelpers.CallMethod, Instance, "MakeJoints")
 				return Instance
 			end, {
-				Processor = setfenv(function(Instance, Member, MemberName, Children, Links)
+				Processor = setfenv(function(Instance, Member, Property, Children, Links)
 					if type(Member) == "string" and Member:find("%$%$") then
-						local SeparatorIndex = Member:find("%$%$"); local MemberIndex = SeparatorIndex + 2
-						if Member:sub(1, SeparatorIndex - 1) == "__children" then
-							Instance[MemberName] = Children[tonumber(Member:sub(MemberIndex))]
-						elseif Member:sub(1, SeparatorIndex - 1) == "__return" then
+						local SeparatorIndex = Member:find("%$%$")
+						local MemberType, Member = Member:sub(1, SeparatorIndex - 1), Member:sub(SeparatorIndex + 2)
+						if MemberType == "__children" then
+							Instance[Property] = Children[tonumber(Member)]
+						elseif MemberType == "__return" then
 							local LinksSize = #Links
-							Links[LinksSize + 1] = Instance; Links[LinksSize + 2] = MemberName; Links[LinksSize + 3] = Member:sub(MemberIndex)
+							Links[LinksSize + 1] = Instance; Links[LinksSize + 2] = Property; Links[LinksSize + 3] = Member
 						else
-							Instance[MemberName] = UserdataConstantStorage.Decoders[Member:sub(1, SeparatorIndex - 1)](Member:sub(MemberIndex))
+							Instance[Property] = UserdataConstantStorage.Decoders[MemberType](Member)
 						end
 					else
-						Instance[MemberName] = Member
+						Instance[Property] = Member
 					end
 				end, {UserdataConstantStorage = Storage.Constant.Userdata}),
 				
 				LinksProcessor = function(Instance, Links) --"!" = root, "!a" == root.a, "" = parent
 					local TableGetNest = Libraries.table.GetNest
+					--print("Total links:", #Links)
 					for Index = 1, #Links, 3 do
-						--print(_(Links[Index], Links[Index + 1], Links[Index + 2]))
+						---print(Index, _(Links[Index], Links[Index + 1], Links[Index + 2]))
 						local Link = Links[Index + 2]
 						Links[Index][Links[Index + 1]] = Link == "!" and Instance or Link == "" and Links[Index].Parent or Link:sub(1, 1) == "!" and TableGetNest(Instance, Link:sub(2)) or TableGetNest(Instance, Link)
 					end
@@ -2390,7 +2402,7 @@ Libraries, Functions, Services, Capabilities = unpack(Libraries.table.Map({Libra
 --Set the library/object wrapper entry point
 _ = Functions.Create.Proxy({
 	__call = setfenv(function(__, ...)
-		local Arguments, ArgumentCount, Proxies = {...}, select("#", ...), {}
+		local Arguments, ArgumentCount, Proxies = {...}, select("#", ...), {true}
 		local GetUnwrappedObjects, GetProxyMethod, IsType = InternalFunctions.GetUnwrappedObjects, InternalFunctions.GetProxyMethod, InternalFunctions.IsType
 		for Index = 1, ArgumentCount do
 			local Object = Arguments[Index]
